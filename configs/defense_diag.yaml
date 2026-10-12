@@ -1,0 +1,10 @@
+defense:
+  name: purified_vfl
+  parameters:
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    gradientClipQuantile: 0
+    gradientClipNorm: 0.0
+    gradientShuffleStrength: 0.0
+    diagnostics: true

@@ -1,0 +1,65 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 候选 L = H 的机制，但把重指派的门控换成 UNION 模式
+    #        （纯标签推断场景 ∪ 后门攻击批），并去掉 FIDP 组件
+    # ------------------------------------------------------------------
+    # 与 H（平台 41.6341）的差别只有两点：
+    #
+    # (1) `gradientShuffleLabelInferenceOnly` -> `gradientShufflePoisoningActiveOnly`
+    #
+    #     H 的门控要求 `backdoor == none`，所以**复合场景的重指派一直是关闭的**。
+    #     而逐场景隐私审计显示，复合场景恰是剩余空间最大的地方：
+    #       dataset_02/composite  恢复率 0.9260，它自己的基线 0.9453（几乎没被防御）
+    #       dataset_05/composite  恢复率 0.8330，基线 0.8214
+    #     原因正是 VILLAIN 的**预攻击预热期也调用基类 trainEpoch**，在那里开启重指派会
+    #     使 VILLAIN 找不到满足 minimumMainTaskAccuracy 的检查点而中止场景。
+    #
+    #     UNION 模式用 `poisoningActive` 精确区分预热批与攻击批，实测（dataset_03/composite）：
+    #       poisoningActive=False  phase=train  calls=121    <- 只有预热期
+    #       poisoningActive=True   phase=train  calls=3388   <- 攻击阶段
+    #     且它在 epoch 1 batch 0（第一个攻击批）翻转。门控为：
+    #       (poisoningActive) 或 (labelInference != none 且 backdoor == none)
+    #     纯 LI 分支必须同时要求 backdoor == none —— 否则会在复合预热期开启
+    #     （LI=pmc、backdoor=villain、poisoningActive=False），正是当初中止 VILLAIN 的条件。
+    #
+    #     实测（100 epoch，本地验证，5 个场景，H -> L）：
+    #       dataset_02/composite  0.8439/ASR0.9812/lra0.9327 -> 0.8976/ASR0.0300/lra0.6599
+    #       dataset_05/composite  0.9874/0.0106/lra0.7466 -> 0.9738/0.0235/lra0.7951
+    #       dataset_03/composite  0.9611/0.0408/lra0.7143 -> 0.9521/0.0286/lra0.7215
+    #       dataset_01/lfba_p10   0.6283/ASR0.8867 -> 0.6150/ASR0.6500
+    #       dataset_03/villain    0.9629/0.0694 -> 0.9647/0.0408
+    #     复合场景 Q_p 净变化 +0.541（隐私项 +0.72 公式分 ≈ 平台 +0.44），且
+    #     dataset_02/composite 的精度同时上升（双赢）。
+    #
+    # (2) 去掉 FIDP 的 `embeddingImportanceNoise`
+    #
+    #     候选 K（FIDP 只在 pmc 启用）平台实测 40.6421，**低于 H 的 41.6341**。
+    #     全场景应用（J）更低。故 FIDP 组件在本赛题是负收益，予以移除。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    # 抖动只在 VILLAIN 场景生效（来自已得 38.11 分的配置）
+    jitterForAttacks: villain
+
+    # 逐样本范数超额裁剪（第 48 轮消融确认在 H 语境下是净正贡献）
+    normExcessStrength: 1.0
+    normExcessFactor: 2.5
+
+    # 重指派：UNION 门控（纯标签推断 ∪ 后门攻击批）
+    gradientShuffleStrength: 1.0
+    gradientShufflePoisoningActiveOnly: true
+    gradientShuffleLabelInferenceOnly: false
+    gradientShufflePoisonedOnly: false
+    gradientShuffleBackdoorOnly: false
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

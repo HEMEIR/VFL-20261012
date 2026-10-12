@@ -1,0 +1,71 @@
+dataset:
+  name: dataset_04
+  dataRoot: data/datasets
+  inputFormat: tabular
+  preprocessing: trainMinMax
+
+model:
+  embeddingDim: 64
+  bottomType: mlp
+  bottomHiddenDims: [64, 64, 32]
+
+training:
+  seed: 100
+  epochs: 100
+  batchSize: 64
+  learningRate: 0.003
+  weightDecay: 0.0001
+  earlyStoppingPatience: 20
+  device: auto
+  progressEnabled: true
+  progressMinInterval: 0.5
+
+backdoor:
+  name: none
+  lfbaTriggerType: structuredDimensions
+  targetLabel: 1
+  poisonRate: 0.1
+  switchRate: 0.5
+  # B 方有 7 维；固定种子选择其中 3 维并置为归一化上界 1。
+  triggerDimensions: 3
+  triggerFeatureValue: 1.0
+  anchorId: TRAIN_005029
+  knownTargetIds:
+    - TRAIN_000004
+    - TRAIN_000009
+    - TRAIN_000011
+    - TRAIN_000017
+    - TRAIN_000018
+    - TRAIN_000022
+    - TRAIN_000028
+    - TRAIN_000036
+    - TRAIN_000038
+    - TRAIN_000040
+  attackSeed: 100
+
+labelInference:
+  name: none
+  # 固定公开的 20 条训练集辅助标签，两类各 10 条。
+  auxiliaryLabelsPath: auxiliary_labels/dataset_04_pmc.csv
+  completionEpochs: 5
+  iterationsPerEpoch: 128
+  completionBatchSize: 16
+  completionLearningRate: 0.001
+  evaluationBatchSize: 512
+  temperature: 0.8
+  mixupAlpha: 0.75
+  lambdaU: 50.0
+  emaDecay: 0.999
+  headLayers: 1
+  activation: relu
+  useBatchNorm: true
+  attackSeed: 100
+  maliciousMomentum: 0.9
+  maliciousDampening: 0.0
+  gradientScaleGamma: 1.0
+  minimumGradientScale: 1.0
+  maximumGradientScale: 5.0
+  gradientScaleEpsilon: 1.0e-7
+
+output:
+  directory: outputs/dataset_04

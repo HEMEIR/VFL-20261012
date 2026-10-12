@@ -1,0 +1,28 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 平衡取向：机制与提交主配置相同，只把异常判据的阈值收紧到 2.0。
+    # ------------------------------------------------------------------
+    # 主配置用 3.0（精度优先）。阈值降到 2.0 会让更多 batch 被判为"被扰动"，
+    # 从而在 dataset_02 这类触发器被底模压制的场景上多更正一部分触发批。
+    # 实测 100 epoch：
+    #   dataset_02_villain  acc 0.9678→0.9644，ASR 0.3479→0.1975（本地验证口径）
+    #   dataset_02_clean    acc 0.9714→0.9281
+    #   dataset_02_composite acc 0.8439→0.7254
+    # 即用约 4 个点的 dataset_02 干净精度换取该场景后门 ASR 明显下降。
+    # 注意：本地记录的是验证集 ASR，正式评分用隐藏测试集 + 私有标签，见
+    # docs/defense_report.md §10。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 2.0
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+    gradientShuffleStrength: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

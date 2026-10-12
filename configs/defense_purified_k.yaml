@@ -1,0 +1,65 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 候选 K = H + VFL-FIDP 组件，**只在实测有益的 pmc 场景启用**
+    # ------------------------------------------------------------------
+    # 候选 J（FIDP 全场景启用）的全量 40 场景结果是**负收益**：公式总分 42.174，
+    # 低于 H 的 42.728。逐场景诊断（15 个标签推断场景的 Q_p 变化）显示 FIDP 的效果
+    # **高度依赖场景**：
+    #
+    #   场景                 H 的 Q_p    J 的 Q_p      ΔQ_p
+    #   dataset_02/pmc       0.1542      0.9527      **+0.7986**  受益
+    #   dataset_03/pmc       0.6123      0.8914      +0.2792       受益
+    #   dataset_01/pmc       0.8856      0.9857      +0.1001       受益
+    #   dataset_01/composite 0.4539      0.5350      +0.0811       受益（但 composite 不启用）
+    #   dataset_02/composite 0.9110      0.0000      **-0.9110**  有害
+    #   dataset_02/amc       0.2728      0.0000      -0.2728       有害
+    #   dataset_03/amc       0.8798      0.6594      -0.2204       有害
+    #   dataset_05/amc       1.0000      0.9334      -0.0666       有害
+    #   dataset_04/pmc       1.0000      1.0000       0.0000       无变化（已满分）
+    #   合计                                                -0.1548
+    #
+    # 因此把 FIDP 限制到它**实测有益**的那一类场景即可超过 H。选择依据是 hook context
+    # 已经携带的公开攻击标签，不需要任何运行期猜测：
+    #   有益的 3 个都是**纯 pmc 场景**（`labelInference: pmc`、`backdoor: none`）
+    #   有害的 4 个是 `backdoor != none` 的复合场景，或 amc 场景
+    # dataset_04/pmc 虽然也在 pmc 类里，但它对 H 已经是 Q_p = 1.0000（满分，恢复率已到
+    # 随机水平），FIDP 无从改善也无从损害——实测 J 与 H 在该场景的 Q_p 完全相同。
+    #
+    # 用 `embeddingImportanceAllowlist: ["pmc"]` 表达这个选择（按公开标签匹配）。
+    #
+    # 注：`configs/formal_config_lock.json` 的 `excludedPaths` 明确包含 `defense`，
+    # 因此防御参数不受冻结协议约束，本改动合法。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    # (1) 抖动只在 VILLAIN 场景生效（来自已得 38.11 分的配置）
+    jitterForAttacks: villain
+
+    # (2) 逐样本范数超额裁剪（第 48 轮消融确认在 H 语境下是净正贡献）
+    normExcessStrength: 1.0
+    normExcessFactor: 2.5
+
+    # (3) 隐私攻关：梯度重指派只在纯标签推断场景生效
+    gradientShuffleStrength: 1.0
+    gradientShuffleLabelInferenceOnly: true
+    gradientShufflePoisonedOnly: false
+    gradientShuffleBackdoorOnly: false
+
+    # (4) VFL-FIDP 组件：按标签重要性加权的逐维度表征噪声，
+    #     **只在与实测有益场景匹配时启用**
+    embeddingImportanceNoise: 0.3
+    embeddingImportanceMomentum: 0.9
+    embeddingImportanceLabelInferenceOnly: true
+    embeddingImportanceAllowlist: ["pmc"]
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

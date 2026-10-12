@@ -1,0 +1,27 @@
+extends: ../dataset_01.yaml
+
+# dataset_01 正式复合场景：LFBA + AMC。
+
+backdoor:
+  name: lfba
+  targetLabel: 0
+  poisonRate: 0.10
+labelInference:
+  name: amc
+  completionBackend: mixmatch
+  auxiliaryLabelsPath: ../auxiliary_labels/dataset_01_pmc.csv
+  completionEpochs: 20
+  completionLearningRate: 0.001
+  lambdaU: 50.0
+  emaDecay: 0.995
+  temperature: 0.8
+  mixupAlpha: 0.75
+  activeStartEpoch: 1
+  maliciousMomentum: 0.9
+  maliciousDampening: 0.0
+  gradientScaleGamma: 2.0
+  minimumGradientScale: 1.0
+  maximumGradientScale: 10.0
+  gradientScaleEpsilon: 1.0e-7
+output:
+  directory: outputs/scenarios/dataset_01/composite

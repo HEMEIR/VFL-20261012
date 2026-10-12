@@ -1,0 +1,11 @@
+extends: ../dataset_03.yaml
+
+backdoor:
+  name: lfba
+  targetLabel: 0
+  poisonRate: 0.10
+labelInference:
+  name: none
+  auxiliaryLabelsPath: ../auxiliary_labels/dataset_03_pmc.csv
+output:
+  directory: outputs/scenarios/dataset_03/lfba_p10

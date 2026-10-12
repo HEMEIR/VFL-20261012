@@ -1,0 +1,27 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 鲁棒取向：无条件共模消除（判据阈值 0，即不做异常判定，直接削掉整批偏移）。
+    # ------------------------------------------------------------------
+    # 为什么这样更能压后门：固定触发器给整批样本叠加同一向量，其位移量就是
+    # batch 均值偏移；无条件削掉它不需要该位移"大到可判据"，因此在触发器被底模
+    # 压制到噪声带内的场景（dataset_02）上也能生效。实测 100 epoch：
+    #   dataset_02_villain   acc 0.9678→0.8213，ASR 0.3479→0.0039
+    #   dataset_03_lfba_p20  acc 0.9259→0.9412，ASR 0.2045→0.0227
+    #   dataset_02_lfba_p20  acc 0.9609→0.9561，ASR 0.9951→0.1017
+    # 代价：dataset_02 的干净主任务精度会崩到随机水平（0.9714→0.5110），这正是
+    # 仓库自带防御的同款缺陷。若评审更看重鲁棒性，用这个包。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 0.0
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+    gradientShuffleStrength: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

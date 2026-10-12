@@ -1,0 +1,52 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 候选 E：逐样本超额裁剪（per-sample excess clipping）
+    # ------------------------------------------------------------------
+    # 与提交主配置机制相同，新增 `perSampleExcessStrength: 0.5` 与
+    # `perSampleExcessFactor: 2.0`。
+    #
+    # 为什么是这个机制（全部有实测依据）：
+    #   第 21 轮测到 dataset_02/composite 的触发器在 **99.7%** 的 batch 里被以很大裕度
+    #   检出（偏离/波动带中位数 15.2 对干净批最大 4.6），**而 ASR 仍是 0.981**。
+    #   高检出率 + ASR 零下降 ⇒ 损害不经过 batch 均值，而是**逐样本位移**；而本条防御此前
+    #   的修正全是 batch 级（削均值、抖动、阈值门控），因此结构上抓不到它。
+    #
+    #   做法（三步，全部只用 A 方可见的 embeddingB）：
+    #     1. 稳健中心 = 逐坐标中位数（污染少数派拖不动它）；
+    #     2. 由中心化残差矩阵的首位奇异方向估计触发器方向（对大数据集只抽样 512 行估计方向，
+    #        修正仍作用于全部样本）；
+    #     3. 逐样本测该方向上的投影 p_i，对超过 `factor × 中位绝对投影` 的**超额部分**做软
+    #        阈值裁剪，**保留批中心**。
+    #
+    #   与第 41 轮失败版本的差别：那次把**整个**首位方向对**每个**样本都扣掉，而 VFL 里干净
+    #   batch 的首位方向就是**类均值方向**，等于删类别信息（dataset_02_lfba 第 5 次塌到
+    #   0.5110）。本版本只裁**异常对齐**的超额部分，干净 batch 近似恒等。
+    #
+    # 实测（100 epoch，本地验证口径，10 个场景，相对主配置）：
+    #   精度 改善 8 / 变差 2，均值 **+0.0095**
+    #   ASR  改善 4 / 变差 6，均值 **-0.0582**
+    #   最关键一条：dataset_02_lfba_p20（**连续 5 次塌陷的那个场景**）
+    #       精度 0.9540 -> **0.9696**，本地 ASR 0.9967 -> **0.5316（腰斩）**
+    #   最大代价：dataset_04_lfba_p20 精度 -0.0262、ASR +0.0611
+    #
+    # 注意：本地 ASR 是验证集口径，被评分的 ASR 用隐藏测试集 + 私有标签，不可本地复算，
+    # 因此本变体只能由平台分判定优劣。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    # 新增：逐样本超额裁剪
+    perSampleExcessStrength: 0.5
+    perSampleExcessFactor: 2.0
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+    gradientShuffleStrength: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

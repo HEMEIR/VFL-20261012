@@ -1,0 +1,44 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # v6 = 提交配置 + 抖动异常门控（jitterAnomalyGate: 2.5）
+    # ------------------------------------------------------------------
+    # 机制与 configs/defense_purified.yaml 完全相同，只多一个门控条件。
+    #
+    # 动机（实测）：`jitterPoisonedOnly` 只在"场景含投毒"这一层面判断，因此在
+    # LFBA 场景里**每个 batch 都会被抖动**——即使 LFBA 只往很小一部分样本里注入
+    # 触发器。用整批样本去防御一个被污染的少数派，代价直接落在主任务精度上。
+    # `jitterAnomalyGate` 改为按 **batch 自身的共模位移** 判断：只有位移达到门控
+    # 值的 batch 才做抖动，没有触发器信号的 batch 原样保留。
+    #
+    # 在 9 个受影响场景上实测（100 epoch，本地验证口径）：
+    #   meanAcc  0.8215 → 0.8334  (+0.0119)
+    #   meanASR  0.3841 → 0.3654  (−0.0187)
+    # 逐场景（acc / ASR，shipped → gate2.5）：
+    #   dataset_01_lfba_p10  0.6283/0.8867 → 0.6925/0.6200   （双赢）
+    #   dataset_01_lfba_p20  0.6625/0.7983 → 0.6333/0.7900   （acc 降）
+    #   dataset_01_villain   0.6700/0.4183 → 0.6892/0.4000   （双赢）
+    #   dataset_02_lfba_p20  0.9540/0.9967 → 0.9609/0.9951   （双赢）
+    #   dataset_03_lfba_p20  0.9250/0.0990 → 0.9322/0.1964   （ASR 明显变差）
+    #   dataset_03_villain   0.9629/0.0694 → 0.9611/0.0571   （ASR 改善）
+    #   dataset_04_lfba_p20  0.8425/0.0538 → 0.8403/0.0622   （略差）
+    #   dataset_04_villain   0.8395/0.1009 → 0.8311/0.1542   （双差）
+    #   dataset_05_lfba_p20  0.9087/0.0337 → 0.9602/0.0135   （双赢）
+    # 净收益集中在精度（评分对精度损失惩罚更重，见 docs/variants.md），
+    # 代价是 dataset_03 的 LFBA ASR 从 0.0990 升到 0.1964。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+    gradientShuffleStrength: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false
+    # 新增：只有 batch 的共模位移比值达到该值才抖动（0 = 关闭门控，行为同 v3）
+    jitterAnomalyGate: 2.5

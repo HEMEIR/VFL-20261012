@@ -1,0 +1,37 @@
+# ---- 数据（公开数据包由平台单独提供，不入库）----
+datasets/
+data/datasets/
+data/formal_public_datasets_v1.0.7.zip
+
+# ---- 运行产物与缓存 ----
+outputs/
+*.zip
+
+# 提交格式示例 zip 需要保留
+!examples/submission_example.zip
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.eggs/
+build/
+dist/
+
+# ---- IDE / 编辑器 ----
+.vs/
+.idea/
+.vscode/
+.t-*/
+*.swp
+
+# ---- 虚拟环境 ----
+.venv/
+venv/
+env/
+conda-meta/
+
+# ---- 系统 ----
+.DS_Store
+Thumbs.db

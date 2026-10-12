@@ -1,0 +1,55 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 候选 F：单样本范数超额裁剪（norm-excess clipping）
+    # ------------------------------------------------------------------
+    # 与提交主配置机制相同，新增 `normExcessStrength: 1.0` 与 `normExcessFactor: 2.5`。
+    #
+    # 为什么是这个机制（实测依据）：
+    #   第 21 轮测到 dataset_02/composite 的触发器在 **99.7%** 的 batch 里被以极大裕度
+    #   检出（偏离/波动带中位数 15.2 对干净批最大 4.6），**而 ASR 仍是 0.981**。
+    #   高检出率 + ASR 零下降 ⇒ 损害不经过 batch 均值，而是**逐样本**的；此前所有
+    #   batch 级机制（削均值、抖动、阈值门控、共享方向、SecureSplit 多数滤波）结构上
+    #   都抓不到它。
+    #
+    #   VILLAIN 的固定加性触发器按构造是**范数膨胀 / 分布外**的，因此"该样本范数相对
+    #   冻结训练范数的超额"是一个**只用单样本统计量**的判据：不计算 batch 的均值、
+    #   中位数、SVD 或任何其它样本的函数，每个样本独立判定与修正。
+    #
+    #   超额部分收缩到带边缘（strength=1.0 即恰好落到 `factor × referenceNorm`）。
+    #
+    # 为什么最终选它而不是候选 A（逐样本超额裁剪，第 41 轮）：
+    #   两者在五个关键场景上正面比较（100 epoch，本地验证口径）：
+    #     d02_lfba_p20   A 0.9696/0.5316  |  B 0.9678/**0.4914**   -> B 的 ASR 更低
+    #     d03_lfba_p20   A 0.9259/0.1412  |  B **0.9268/0.0455**   -> B 双赢
+    #     d03_villain    A **0.9638/0.0571** | B 0.9638/0.0673     -> 精度同，A ASR 略低
+    #     d01_villain    A 0.6858/0.5017  |  B **0.7000/0.4083**   -> B 双赢
+    #     d02_clean      A **0.9710**     |  B 0.9701              -> 基本持平
+    #   **决定性差异**：A 依赖**批级**统计量（batch 中位数 + 首位奇异方向），在
+    #   dataset_04/clean 上使表征幅度从 0.248 涨到 15.6（63 倍）并最终训练发散到 NaN，
+    #   导致场景直接中止；实测两次数值加固（限制修正量、最大范数发散防护）**反而使
+    #   增长更快**（5.76 -> 15.57），证明这是**机制内在的不稳定**而非数值问题。
+    #   B 只用单样本统计量，从不崩溃。
+    #
+    # 参数敏感性（实测）：factor 2.0 过紧（d02_lfba 塌到 0.5110）、3.0 过松
+    #   （ASR 0.9957 未动），**2.5 为最优点**。
+    #
+    # 注意：本地 ASR 是验证集口径，被评分的 ASR 用隐藏测试集 + 私有标签，不可本地复算。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    # 新增：逐样本范数超额裁剪（只用单样本统计量）
+    normExcessStrength: 1.0
+    normExcessFactor: 2.5
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+    gradientShuffleStrength: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

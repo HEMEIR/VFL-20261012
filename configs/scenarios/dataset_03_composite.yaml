@@ -1,0 +1,30 @@
+extends: ../dataset_03.yaml
+
+# dataset_03 正式复合场景：VILLAIN + PMC。
+
+backdoor:
+  name: villain
+  targetLabel: 1
+  poisonRate: 1.0
+  startEpoch: 1
+  triggerDimensionCount: 16
+  beta: 40.0
+  triggerKeepRate: 0.75
+  triggerShiftMin: 0.6
+  triggerShiftMax: 1.2
+  attackerPreAttackLearningRate: 0.01
+  attackerAttackLearningRate: 0.001
+  testTriggerRate: 1.0
+  minimumMainTaskAccuracy: 0.96139
+labelInference:
+  name: pmc
+  completionBackend: mixmatch
+  auxiliaryLabelsPath: ../auxiliary_labels/dataset_03_pmc.csv
+  completionEpochs: 20
+  completionLearningRate: 0.0005
+  lambdaU: 50.0
+  emaDecay: 0.995
+  temperature: 0.8
+  mixupAlpha: 0.75
+output:
+  directory: outputs/scenarios/dataset_03/composite

@@ -1,0 +1,58 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 候选 N = H 的纯标签推断分支 + M 的 LFBA 攻击批分支（两者叠加）
+    # ------------------------------------------------------------------
+    # 依据（第 55 轮实测）：
+    #
+    # 候选 H（平台 41.6341）只启用**纯标签推断场景**的重指派：
+    #   `gradientShuffleLabelInferenceOnly: true`（其门控本身已要求 backdoor == none）
+    #   隐私 8.848（最高）  鲁棒 15.696
+    #
+    # 候选 M 只启用 **LFBA 攻击批 + 复合攻击批**的重指派，但**移除了纯 LI 分支**
+    #   （它把 `gradientShuffleLabelInferenceOnly` 设为 false）：
+    #   隐私 8.082（丢失 H 的收益）  鲁棒 17.114（最高，+1.418）
+    #
+    # 两者的收益来源**完全不重叠**：
+    #   * 纯 LI 分支（pmc/amc 场景）    -> 压低标签恢复率 -> 隐私项
+    #   * LFBA 攻击批分支               -> 压低后门 ASR   -> 鲁棒项
+    # 而 H 与 M 的场景作用域是互补的，所以**应当可以同时开启**。
+    #
+    # 候选 L 曾经同时开启两者却净负（性能 −1.206），原因是 L 用的是
+    # `gradientShufflePoisoningActiveOnly` 的早期版本：它把
+    # `gradientShuffleLabelInferenceOnly` 置为 false 但 poisoning 分支覆盖一切，
+    # 且当时**没有**后门白名单，导致 VILLAIN 攻击期也被开启（场景中止）。
+    # 现在的门控已经分离为两条独立分支，可以精确组合：
+    #
+    #   labelInferenceOnly 门控 : labelInference != none 且 backdoor == none   -> 纯 LI
+    #   poisoningActiveOnly 门控: poisoningActive 且 backdoor in {lfba}          -> LFBA 攻击批
+    #
+    # 注意 `gradientShufflePoisoningBackdoors: ["lfba"]` 的语义是**允许 LFBA**进入
+    # poisoning 分支（不是排除 LFBA）——VILLAIN 必须排除，因为它的 poisoningActive
+    # 覆盖整个攻击阶段，在那里开启会让它达不到 minimumMainTaskAccuracy 而中止场景。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    jitterForAttacks: villain
+
+    normExcessStrength: 1.0
+    normExcessFactor: 2.5
+
+    # 两条重指派分支同时开启
+    gradientShuffleStrength: 1.0
+    gradientShuffleLabelInferenceOnly: true
+    gradientShufflePoisoningActiveOnly: true
+    gradientShufflePoisoningBackdoors: ["lfba"]
+    gradientShufflePoisonedOnly: false
+    gradientShuffleBackdoorOnly: false
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

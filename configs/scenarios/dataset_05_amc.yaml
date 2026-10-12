@@ -1,0 +1,17 @@
+extends: ../dataset_05.yaml
+
+training:
+  learningRate: 0.001
+backdoor:
+  name: none
+labelInference:
+  name: amc
+  auxiliaryLabelsPath: ../auxiliary_labels/dataset_05_pmc.csv
+  completionEpochs: 20
+  completionLearningRate: 0.001
+  lambdaU: 50.0
+  emaDecay: 0.999
+  temperature: 0.8
+  mixupAlpha: 0.75
+output:
+  directory: outputs/scenarios/dataset_05/amc

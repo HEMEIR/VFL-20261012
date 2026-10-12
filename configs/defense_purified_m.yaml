@@ -1,0 +1,58 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 候选 M = H，但额外在 **LFBA+AMC 复合场景**的后门攻击批启用重指派
+    # ------------------------------------------------------------------
+    # 依据（第 52/53 轮实测）：
+    #
+    # 候选 L 的 UNION 门控（poisoningActive 或纯LI）**净负**：公式分 41.066 对 H 的 42.409。
+    # 逐维分解显示亏损全部来自性能项：
+    #   性能 17.864 -> 16.658（-1.206）
+    #   隐私  8.848 ->  8.082（-0.766）
+    #   鲁棒 15.696 -> 16.327（+0.631）
+    # 原因是 UNION 让重指派在 **LFBA 攻击批**也生效，而 LFBA 用逐样本梯度的 L1 相似度
+    # 挑选投毒集，破坏对应关系会同时损害 LFBA 训练与主任务。
+    #
+    # 但 L 的试点暴露了一个**真实的正结果**：
+    #   dataset_02/composite  0.8439 / ASR 0.9812 / lra 0.9327
+    #                   ->     0.8976 / ASR 0.0300 / lra 0.6599
+    # ASR 从 0.9812 崩到 0.0300，**精度同时上升**。
+    #
+    # 另一个必须记录的语义发现：`poisoningActive` 对两种后门含义不同
+    #   * LFBA  只标记**含投毒样本的批**
+    #   * VILLAIN 是固定触发器，**整个攻击阶段全部为 True**
+    # 因此在 VILLAIN 攻击期开启重指派会让它达不到 minimumMainTaskAccuracy：
+    # 候选 L 第一次运行就在 `dataset_03/composite` 中止于此（且当时启动器未清残留快照，
+    # 伪报了 40/40——`run_variant_snapshot.py:105` 有 `if len(existing) >= 40: 跳过` 的早退）。
+    #
+    # 候选 M 即针对上述两点收窄：`gradientShufflePoisoningBackdoors: ["lfba"]`
+    # （已默认），因此
+    #   pure_label_inference  == True            -> 开启（保留 H 的隐私收益）
+    #   backdoor == "lfba" and poisoningActive   -> 开启（新增，目标 d01/d02 composite）
+    #   backdoor == "villain"                    -> 关闭（避免中止）
+    #   warm-up (poisoningActive=False)          -> 关闭
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    jitterForAttacks: villain
+
+    normExcessStrength: 1.0
+    normExcessFactor: 2.5
+
+    gradientShuffleStrength: 1.0
+    gradientShufflePoisoningActiveOnly: true
+    gradientShufflePoisoningBackdoors: ["lfba"]
+    gradientShuffleLabelInferenceOnly: false
+    gradientShufflePoisonedOnly: false
+    gradientShuffleBackdoorOnly: false
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

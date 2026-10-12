@@ -1,0 +1,136 @@
+{
+  "algorithm": "sha256",
+  "excludedPaths": [
+    "configPath",
+    "dataset.dataRoot",
+    "defense",
+    "output",
+    "training.device",
+    "training.progressEnabled",
+    "training.progressMinInterval"
+  ],
+  "scenarioCount": 40,
+  "scenarios": {
+    "dataset_01_amc.yaml": {
+      "sha256": "25f71633f322ae78cff405e8c92f41d6d67515cd3ebd159586b242f1c597e864"
+    },
+    "dataset_01_clean.yaml": {
+      "sha256": "58527a50d460fdf807c8cdf7bcde83c5d47ff6e4b2669c00069f1f09e7310850"
+    },
+    "dataset_01_composite.yaml": {
+      "sha256": "1d6d709ff9b678bc7fc2ba955054c7d47f65f58ea7552d389a4f356b69393600"
+    },
+    "dataset_01_lfba_p05.yaml": {
+      "sha256": "ec773609d2ab3d56b3ddbc6d5d4e9bacbab366401c3a4327d18e7af1c03da1f8"
+    },
+    "dataset_01_lfba_p10.yaml": {
+      "sha256": "75c49cbb6f2bf5009bcae5e035043421395ec23b305fd0eb9f9c5f92476b3dc3"
+    },
+    "dataset_01_lfba_p20.yaml": {
+      "sha256": "abcfb5062eec018e817098895e848eb8bb5c4f83ff73b6dfa78ab32ec91ba27d"
+    },
+    "dataset_01_pmc.yaml": {
+      "sha256": "4c4e9d9877128a58c055ba04d82fd5dbbdeada53540a9f9c1245364284663c0a"
+    },
+    "dataset_01_villain.yaml": {
+      "sha256": "9029894468a7bd3afb1ccbe71a17101d0dfe68a0d08b2476b5db7c4ccd877daf"
+    },
+    "dataset_02_amc.yaml": {
+      "sha256": "52aadb762e239990fa9d204c167a182f9b865138e893c6c8f3a298e232870c05"
+    },
+    "dataset_02_clean.yaml": {
+      "sha256": "0ba381805f5a781adeaa12a6d56ddea44d29e975b94dff3ea97ddde58afeb471"
+    },
+    "dataset_02_composite.yaml": {
+      "sha256": "8139a666c4021f5118494e516107ac31cebd4cfce9b3bb9f735b636d68b20076"
+    },
+    "dataset_02_lfba_p05.yaml": {
+      "sha256": "ef97e065d68a40f809f412a39764515a762c3e2b21076130ea109ca41f971447"
+    },
+    "dataset_02_lfba_p10.yaml": {
+      "sha256": "24be34a39e71c0be1847a8ef89ece1d01031740e9812659ac681de3daf85baab"
+    },
+    "dataset_02_lfba_p20.yaml": {
+      "sha256": "0ad777421e232e1e72b25a0f379e005fcd161949cbf72c5046c0461a3bf293e4"
+    },
+    "dataset_02_pmc.yaml": {
+      "sha256": "af5ed94a44fb423bc5f64d197454af17f3032ecf755aeadac51f6de8c277a488"
+    },
+    "dataset_02_villain.yaml": {
+      "sha256": "27041d0211db4f2af5a60c42c93cc2e9c1a6b127519eef9a9d70f1fa09c67fce"
+    },
+    "dataset_03_amc.yaml": {
+      "sha256": "61158c125ae18390b8f32dbba9ce5b0e8575cf51e7b9bbede174827f5426c869"
+    },
+    "dataset_03_clean.yaml": {
+      "sha256": "44c5dddd3cc60c56c2da677acdade67d5195a7ddbbf050c2b997e39ae4d68f7d"
+    },
+    "dataset_03_composite.yaml": {
+      "sha256": "688c79eae3fe2131e47fd43eacdcf8a327238cd5aeeccd2f8fae9aa16df01cff"
+    },
+    "dataset_03_lfba_p05.yaml": {
+      "sha256": "d436d415af487af1e8f254fa13e5135ffe7232bc364ebd5af8f505da04ceab6c"
+    },
+    "dataset_03_lfba_p10.yaml": {
+      "sha256": "38bc3d3f665bd8b6bc9eeb7c3564082ad245d1334901fe84a75bb77a48b24ce2"
+    },
+    "dataset_03_lfba_p20.yaml": {
+      "sha256": "481e502338d8fb3ed434aed837594dd8744812ac6f9df33588ffaf07b4185bab"
+    },
+    "dataset_03_pmc.yaml": {
+      "sha256": "284198a55f98ac6159cc0d64cefe62dd4af84c27a5099b8cd902962446bca73c"
+    },
+    "dataset_03_villain.yaml": {
+      "sha256": "3f2033e6218f4ce1dbbd104669f08c036933a9feab0307d6b457e111f7da47cd"
+    },
+    "dataset_04_amc.yaml": {
+      "sha256": "f9475e5d69048f7e05b6745f5c3ae4191e77ecf114a3ec2f52a28613f20eb1cb"
+    },
+    "dataset_04_clean.yaml": {
+      "sha256": "c18950e5f7dd7320ce3c879fd30ffd5bd26c23c265418a037d49998ce3888e2d"
+    },
+    "dataset_04_composite.yaml": {
+      "sha256": "129871da63d41f28c7f8d9388d1c010f0eed811815a7cfde6ad6db50ae21bdf2"
+    },
+    "dataset_04_lfba_p05.yaml": {
+      "sha256": "49609bc78da22e87fb5ea472028fbc322b4df32731b8c8bd1b7b197a37b1c77a"
+    },
+    "dataset_04_lfba_p10.yaml": {
+      "sha256": "bb9d4e996e2ea01f0391ef987c3f085bfa6cc8543e3d21f09557d140f6fc76d5"
+    },
+    "dataset_04_lfba_p20.yaml": {
+      "sha256": "04f5cf1cc1332650c07e52db071b7cc8309d72d3b89f833ecadded184c78f9a6"
+    },
+    "dataset_04_pmc.yaml": {
+      "sha256": "c3851f7800d23ab95424db957914865ac40672c32bae70dcb3a35461a15f9ed5"
+    },
+    "dataset_04_villain.yaml": {
+      "sha256": "415d17b25420d946255c4594af4a374323141cb66152a0dfa378496f80585757"
+    },
+    "dataset_05_amc.yaml": {
+      "sha256": "ea8415cf6ca4742514e438c8a9c52b647a85a5ddb1f40e72c87bd097427e80a7"
+    },
+    "dataset_05_clean.yaml": {
+      "sha256": "36429c623367e133b8805fb7d5f6f4a9664d64d0e79e9be65b0cbd07e1d29ba5"
+    },
+    "dataset_05_composite.yaml": {
+      "sha256": "ef8b840983724c0717c3f4b744fa6d7e1df3e7768702666d63ddac1a9b8b7768"
+    },
+    "dataset_05_lfba_p05.yaml": {
+      "sha256": "fbc2e4a0383736287b86a71ff2a6c5ef714d56f9e30a13edb77c57fcd26d35d1"
+    },
+    "dataset_05_lfba_p10.yaml": {
+      "sha256": "4730ca8959d975677786fc2493284f7f2b4e6476634590977f7f1d99d265f500"
+    },
+    "dataset_05_lfba_p20.yaml": {
+      "sha256": "8f6c418243fcf17bfd8ae64a5525cb5398987714db588198186d2954fce94bd8"
+    },
+    "dataset_05_pmc.yaml": {
+      "sha256": "63b0967012ab9ef4bd7d853b5a7ae0eeb3f25c642a0a07eb8b4c0d3bdd8fa58b"
+    },
+    "dataset_05_villain.yaml": {
+      "sha256": "857287aa761c4c5cbc34f8acc28d73a1502b2f9ea9f7e7898ec95cc0465e95c2"
+    }
+  },
+  "schemaVersion": 1
+}

@@ -1,0 +1,37 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 版本 B：按攻击类型门控的鲁棒取向
+    # ------------------------------------------------------------------
+    # 与提交主配置（configs/defense_purified.yaml）机制相同，唯一新增
+    # `inferenceUnconditionalForAttacks: villain`。
+    #
+    # 依据（实测，100 epoch，本地验证口径）：VILLAIN 对**每个**样本的被动方嵌入叠加
+    # **同一个固定触发向量**，因此 batch 均值偏移就是攻击本身——无条件削掉它等于精确
+    # 抵消（dataset_02 上 ASR 0.3479 → 0.0039）。而 LFBA 替换的是输入特征，其损害不经过
+    # batch 均值（dataset_02_composite 触发检出率 99.7% 而 ASR 仍 0.98），把无条件消除
+    # 用在 LFBA 上正是把 dataset_02 干净精度打到随机水平的那个操作。
+    # 因此按公开场景标签 `backdoor` 只在 VILLAIN 场景启用无条件消除。
+    #
+    # 正式启用 VILLAIN 的三个数据集实测（v3 → 本版本）：
+    #   dataset_01_villain  acc 0.6700→0.6975   ASR 0.4183→0.2717   （双赢）
+    #   dataset_03_villain  acc 0.9629→0.9512   ASR 0.0694→0.0939   （双输）
+    #   dataset_05_villain  acc 0.9767→0.9777   ASR 0.0070→0.0235   （acc 升，ASR 升）
+    #   三项均值            acc 0.8699→0.8755   ASR 0.1649→0.1297
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    # 新增：仅对 VILLAIN 场景做无条件共模消除
+    inferenceUnconditionalForAttacks: villain
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+    gradientShuffleStrength: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

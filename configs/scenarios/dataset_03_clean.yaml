@@ -1,0 +1,9 @@
+extends: ../dataset_03.yaml
+
+backdoor:
+  name: none
+labelInference:
+  name: none
+  auxiliaryLabelsPath: ../auxiliary_labels/dataset_03_pmc.csv
+output:
+  directory: outputs/scenarios/dataset_03/clean

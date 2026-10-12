@@ -1,0 +1,15 @@
+extends: ../dataset_03.yaml
+
+backdoor:
+  name: none
+labelInference:
+  name: pmc
+  auxiliaryLabelsPath: ../auxiliary_labels/dataset_03_pmc.csv
+  completionEpochs: 20
+  completionLearningRate: 0.0005
+  lambdaU: 50.0
+  emaDecay: 0.995
+  temperature: 0.8
+  mixupAlpha: 0.75
+output:
+  directory: outputs/scenarios/dataset_03/pmc

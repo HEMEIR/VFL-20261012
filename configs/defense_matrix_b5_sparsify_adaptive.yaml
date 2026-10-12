@@ -1,0 +1,33 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # 生成自 scripts/make_matrix_configs.py
+    # 基座 = 候选 O（平台实测 43.3135），仅改动本文件标题所述的一个轴。
+    gradientSparsifyRate: 0.5
+    gradientSparsifyAdaptive: true
+
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    jitterForAttacks: villain
+
+    normExcessStrength: 1.0
+    normExcessFactor: 2.5
+
+    gradientShuffleStrength: 1.0
+    gradientShuffleLabelInferenceOnly: true
+    gradientShufflePoisoningActiveOnly: true
+    gradientShufflePoisoningBackdoors: ["lfba"]
+    gradientShufflePoisonedOnly: false
+    gradientShuffleBackdoorOnly: false
+
+    partyDropoutRate: 0.2
+    partyDropoutLabelInferenceOnly: true
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false
+

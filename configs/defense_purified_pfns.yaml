@@ -1,0 +1,73 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # PFNS = 软编码伪标签（soft alias encoding）
+    # ------------------------------------------------------------------
+    # 机制：把真实标签映射到「别名块」的**均匀软分布**，而不是硬映射到单个别名。
+    #   - 真实类 c 拥有别名块 [c*K+base, c*K+base+K)
+    #   - 软编码目标 = 块内每个别名各 1/K（一个概率分布）
+    #   - 逆映射 = (预测别名 - base) // K，推理时恢复真实类
+    #
+    # 与硬编码（labelAliasSoft=false）的区别：
+    #   硬编码: 每个样本随机 pick 块内一个别名做 one-hot 目标 -> 优化困难、精度暴跌
+    #   软编码: 块内均匀分布做 soft 目标 -> 平滑、几乎无损
+    #
+    # 玩具实测（scripts/probe_alias_soft.py，逆映射后精度）：
+    #   基线(真实标签)     0.9514
+    #   K=2 硬编码         0.9443
+    #   K=2 软编码         0.9471
+    #   K=4 硬编码         0.9271
+    #   K=4 软编码         0.9500   <- 几乎无损
+    #
+    # 软编码的额外优势（梯度通道）：
+    #   硬编码: gradientB[i] = softmax(logits_i) - onehot(alias_i)   （尖锐信号）
+    #   软编码: gradientB[i] = softmax(logits_i) - 块内均匀分布        （平滑信号）
+    #   即 B 收到的梯度不再指向单一类别，而是指向整个别名块，可能进一步混淆标签推断。
+    #
+    # 实现位置：
+    #   - defense/purified_vfl.py: `_softLabel` + `labelAliasSoft` 参数
+    #   - core/trainer.py: 损失处检测 2D soft target，改用
+    #     -(target * log_softmax(logits)).sum(1).mean()  (等价 KL 散度)
+    #   - core/experiment.py: 输出维度 = 2 * classCount * K（factory 与 setter 一致）
+    #
+    # 注意：labelAliasSoft 与 labelAliasFactor 是全局参数，影响所有场景的顶模输出维度
+    # （classCount -> classCount*K*2）。软编码当前未按场景门控，对后门场景的影响
+    # 需在全量 40 场景中确认。
+    pseudoLabelStrength: 1.0
+    labelAliasFactor: 2
+    labelAliasSoft: true
+    pseudoLabelSeed: 11
+
+    # ------------------------------------------------------------------
+    # 以下为候选 O 的已验证机制（重指派 + party dropout + jitter + norm excess）
+    # ------------------------------------------------------------------
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    jitterForAttacks: villain
+
+    normExcessStrength: 1.0
+    normExcessFactor: 2.5
+
+    # 重指派（样本↔梯度配对置换）——隐私主力的定量隔离结论
+    gradientShuffleStrength: 1.0
+    gradientShuffleLabelInferenceOnly: true
+    gradientShufflePoisoningActiveOnly: true
+    gradientShufflePoisoningBackdoors: ["lfba"]
+    gradientShufflePoisonedOnly: false
+    gradientShuffleBackdoorOnly: false
+
+    # party dropout
+    partyDropoutRate: 0.2
+    partyDropoutLabelInferenceOnly: true
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

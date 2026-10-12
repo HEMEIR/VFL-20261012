@@ -1,0 +1,24 @@
+defense:
+  name: robust_vfl
+  parameters:
+    # 训练期重定心强度：只影响送入 A 方顶模的被动态表征。过高会把 batch
+    # 均值的采样噪声注入顶模输入，拖累主任务精度，故默认取折中的 0.5。
+    trainingRecenterStrength: 0.5
+    # 推理期重定心强度：必须为 1.0，才能完全抵消 VILLAIN/LFBA 在推理阶段
+    # 对整批样本注入的同一共有触发器偏置。
+    inferenceRecenterStrength: 1.0
+    # 逐维方差对齐强度：触发器经非线性底模后还会留下逐维方差偏移，这里把 batch
+    # 标准差按幂次拉回参考标准差（0.0 关闭，1.0 完全对齐），对干净 batch 近似恒等。
+    representationStandardizeStrength: 0.0
+    # 训练期在被送入顶模的被动态表征上叠加的高斯噪声（按参考标准差缩放）。
+    representationNoise: 0.0
+    # 返回给 B 方的 cut 梯度的逐样本模长归一化强度，破坏 LFBA 的难样本排序。
+    gradientNormalizeStrength: 0.0
+    # 返回给 B 方的 cut 梯度的相对高斯噪声，破坏 LFBA 相似度选择与 AMC 方向估计，
+    # 并削弱 PMC/AMC 完成模型可用的标签信息量。
+    gradientNoise: 0.0
+    # 返回给 B 方的 cut 梯度的类别条件去均值强度（实验证明强取值严重损害主任务，
+    # 默认关闭）。
+    gradientClassCenteringStrength: 0.0
+    # 参考均值/标准差的指数滑动平均系数。
+    referenceMomentum: 0.99

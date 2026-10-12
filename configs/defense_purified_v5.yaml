@@ -1,0 +1,36 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # v5 = 提交主配置 + 新的梯度重指派（0.3，仅后门场景）
+    # ------------------------------------------------------------------
+    # 主机制同 configs/defense_purified.yaml（软阈值共模消除 + 注入批抖动）。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    # 新增：在 batch 内随机置换逐样本 cut 梯度。这会破坏补全/后门攻击赖以成立的
+    # "样本—梯度"对应关系，实测对最薄弱的 LFBA 场景效果显著：
+    #   dataset_02_lfba_p20  acc 0.9609→0.9664，ASR 0.9951→0.4961（腰斩）
+    #   dataset_03_lfba_p20  acc 0.9259→0.9620，ASR 0.2045→0.0552
+    #   dataset_03_villain   acc 0.9611→0.9575，ASR 0.0408→0.0306
+    # 代价很小且集中：
+    #   dataset_03_clean     0.9801→0.9720（−0.0081）
+    #   dataset_02_clean     0.9714→0.9704（−0.0010）
+    #   dataset_04_villain   acc 0.8290→0.8219，ASR 0.1782→0.1892（略差）
+    # 强度取 0.3 而非 1.0：满强度会让 dataset_03 的 VILLAIN 找不到满足
+    # minimumMainTaskAccuracy 的检查点（该次运行直接失败），因此必须保守。
+    gradientShuffleStrength: 0.3
+    # 只在存在后门攻击的场景启用：标签推断场景下重指派对隐私指标毫无影响
+    # （dataset_03_pmc 的 LRA 在有/无重指派时同为 0.5696），却会白付精度代价。
+    gradientShuffleBackdoorOnly: true
+    gradientShufflePoisonedOnly: false
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

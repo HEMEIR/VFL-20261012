@@ -1,0 +1,34 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 版本 C：精度取向（关闭注入批抖动）
+    # ------------------------------------------------------------------
+    # 与提交主配置机制相同，只把 `trainingJitter` 从 0.5 改为 0.0。
+    #
+    # 依据（实测，100 epoch，本地验证口径）：抖动的收益是**逐数据集分裂**的，不存在
+    # 全局最优强度（0.25 / 1.0 都已实测不如 0.5）。逐场景实测（抖动开 → 关）：
+    #   dataset_02_lfba_p20  0.9540/0.9967 → 0.9609/0.9951   双赢
+    #   dataset_05_lfba_p20  0.9087/0.0337 → 0.9602/0.0135   双赢
+    #   dataset_03_lfba_p20  0.9250/0.0990 → 0.9259/0.2045   acc 微升，ASR 明显变差
+    #   dataset_04_lfba_p20  0.8425/0.0538 → 0.8403/0.0622   略差
+    #   dataset_04_villain   0.8395/0.1009 → 0.8290/0.1782   双差
+    # 即关闭抖动在 dataset_01/02/05 上更优，在 dataset_03/04 上更差。
+    #
+    # **重要限制**：本地 `metrics.json` 的 ASR 是在**验证集**上算的，而正式评分用隐藏
+    # 测试集 + 组织方私有标签；已观测到本地 ASR 差与平台分差无法互相解释
+    # （docs/variants.md 第 23–24 轮）。因此本版本只能由平台分判定优劣。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+    gradientShuffleStrength: 0.0
+
+    # 关闭抖动
+    trainingJitter: 0.0
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

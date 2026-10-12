@@ -1,0 +1,21 @@
+extends: ../dataset_02.yaml
+
+backdoor:
+  name: villain
+  targetLabel: 1
+  poisonRate: 1.0
+  startEpoch: 1
+  triggerDimensionCount: 16
+  beta: 10.918
+  triggerKeepRate: 0.75
+  triggerShiftMin: 0.6
+  triggerShiftMax: 1.2
+  attackerPreAttackLearningRate: 0.01
+  attackerAttackLearningRate: 0.001
+  testTriggerRate: 1.0
+  minimumMainTaskAccuracy: 0.95
+labelInference:
+  name: none
+  auxiliaryLabelsPath: ../auxiliary_labels/dataset_02_pmc.csv
+output:
+  directory: outputs/scenarios/dataset_02/villain

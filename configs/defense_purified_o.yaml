@@ -1,0 +1,63 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 候选 O = 候选 M + party dropout（用户防御文档第 5 条建议）
+    # ------------------------------------------------------------------
+    # 机制来源：用户提供的 A 侧防御建议文档第 5 条「对 B 做 party dropout，防止顶层模型
+    # 过度依赖 B。这些同时压低了 B 的后门杠杆。」
+    #
+    # 实现：`_partyDropout` 在 trainingRepresentationHook 内对随机一部分样本把 cutB
+    # **整行置零**，使顶模必须学会在 B 缺席时也能工作。它改变的是「顶模被允许对哪些样本
+    # 使用 B」，而不是梯度内容——因此属于已经验证能迁移到平台的那一族
+    # （结构性改变嵌入的使用方式），而非被证伪的加噪族。
+    #
+    # 实测（100 epoch，本地验证，PD0 = 不加 dropout 的对照）：
+    #   场景            PD0                PD20（rate=0.2）
+    #   dataset_02_pmc  0.9025 / 0.6972 -> 0.8959 / 0.5039   LRA 到随机水平
+    #   dataset_03_pmc  0.9448 / 0.5904 -> 0.9584 / 0.5163   双赢（精度 +0.0136）
+    #   dataset_04_amc  0.8317 / 0.7606 -> 0.8327 / 0.7606   无效
+    #   dataset_05_amc  0.9893 / 0.4117 -> 0.9845 / 0.4583   略变差
+    #   dataset_03_villain 0.9638 / 0.0673 -> 逐位不变
+    #
+    # 即 **对 PMC（补全攻击）有效、对 AMC（自适应放大）无效**。原因与文档诊断一致：
+    # AMC 的放大发生在 B 本地 Adam 更新之前，主动放大沿梯度稳定方向的标签信号；
+    # party dropout 只降低 A 对 B 的依赖，不改变 B 本地更新的方向一致性。
+    #
+    # 门控（两重，均为实测要求）：
+    #   ① 仅标签推断场景（partyDropoutLabelInferenceOnly）
+    #   ② **绝不在攻击批生效**——否则 cutB 整行置零会让该样本的梯度精确为零，
+    #      而 LFBA 用逐样本梯度的 L1 相似度构建投毒集，会直接中止场景：
+    #      `ValueError: LFBA cannot calculate L1 similarity from zero gradients`
+    #      （已在 dataset_02/composite 上实际复现）
+    #   纯标签推断场景的 poisoningActive 恒为 False（实测 dataset_03_pmc 363/363 次），
+    #   所以门控 ② 在那里不产生代价。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    jitterForAttacks: villain
+
+    normExcessStrength: 1.0
+    normExcessFactor: 2.5
+
+    # 重指派门控沿用候选 M（纯 LI 分支 + LFBA 攻击批分支）
+    gradientShuffleStrength: 1.0
+    gradientShuffleLabelInferenceOnly: true
+    gradientShufflePoisoningActiveOnly: true
+    gradientShufflePoisoningBackdoors: ["lfba"]
+    gradientShufflePoisonedOnly: false
+    gradientShuffleBackdoorOnly: false
+
+    # party dropout（本轮新增）
+    partyDropoutRate: 0.2
+    partyDropoutLabelInferenceOnly: true
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

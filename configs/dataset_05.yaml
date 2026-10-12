@@ -1,0 +1,72 @@
+dataset:
+  name: dataset_05
+  dataRoot: data/datasets
+  inputFormat: tabular
+  preprocessing: none
+  classCount: 6
+
+model:
+  embeddingDim: 64
+  bottomType: mlp
+  bottomHiddenDims: [256, 128, 64]
+
+training:
+  seed: 100
+  epochs: 100
+  batchSize: 64
+  learningRate: 0.001
+  weightDecay: 0.0
+  earlyStoppingPatience: 20
+  device: auto
+  progressEnabled: true
+  progressMinInterval: 0.5
+
+backdoor:
+  name: none
+  lfbaTriggerType: structuredDimensions
+  targetLabel: 0
+  poisonRate: 0.10
+  switchRate: 0.3
+  similarityNorm: l1
+  triggerDimensions: 10
+  triggerFeatureValue: 1.0
+  anchorId: TRAIN_000636
+  knownTargetIds:
+    - TRAIN_000013
+    - TRAIN_000016
+    - TRAIN_000020
+    - TRAIN_000027
+    - TRAIN_000032
+    - TRAIN_000033
+    - TRAIN_000036
+    - TRAIN_000038
+    - TRAIN_000044
+    - TRAIN_000045
+  attackSeed: 100
+
+labelInference:
+  name: none
+  completionBackend: mixmatch
+  auxiliaryLabelsPath: auxiliary_labels/dataset_05_pmc.csv
+  completionEpochs: 30
+  iterationsPerEpoch: 128
+  completionBatchSize: 16
+  completionLearningRate: 0.001
+  evaluationBatchSize: 512
+  temperature: 0.8
+  mixupAlpha: 0.75
+  lambdaU: 50.0
+  emaDecay: 0.995
+  headLayers: 1
+  activation: relu
+  useBatchNorm: true
+  attackSeed: 100
+  maliciousMomentum: 0.9
+  maliciousDampening: 0.0
+  gradientScaleGamma: 1.0
+  minimumGradientScale: 1.0
+  maximumGradientScale: 5.0
+  gradientScaleEpsilon: 1.0e-7
+
+output:
+  directory: outputs/dataset_05

@@ -1,0 +1,71 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 候选 J = H + VFL-FIDP 的逐维度重要性加权噪声
+    # ------------------------------------------------------------------
+    # 叠加依据（第 48 轮实测）：
+    # H 的隐私项已到 9.78/20，但要继续压标签恢复率受制于
+    # `gradientShuffleStrength` 的代码上限（clamp 1.0），无法再加强。因此必须叠加
+    # 第二个机制。实测排除了"统一加噪"：
+    #   6 个场景，H(仅重指派) 隐私 5.25/20、LRA 0.6818
+    #   叠加 gradientNoise 0.3 -> 隐私 3.58/20（倒退），1.0 -> 3.65/20
+    #   且 d05_pmc 的 LRA 从 0.633 退回 0.780，d03_pmc 从 0.495 升到 0.516
+    # 即统一噪声要么无效、要么抵消已有改善（与仓库第 5 节第 4 条"Adam 逐参数自适应
+    # 吸收统一缩放/加噪"的实测一致）。
+    #
+    # 但 VFL-FIDP 的核心思想不同：**只对泄露标签的那些维度加噪**。
+    # 取自 code/VFL-FIDP(VFLAIR)/src/evaluates/defenses/VFL_FIDP.py 的
+    # `compute_gini_importance`：
+    #   Gini_d = 1 - 类内方差_d / 总方差_d
+    # 类内方差小、类间差异大的维度得分接近 1，正是被动方能读出标签的维度。
+    #
+    # 本仓库的适配（`_embeddingImportance` / `_addImportanceWeightedNoise`）：
+    #   - 在 A 的**表征**上计算（A 不得使用 B 的原始特征），标签由 A 合法持有；
+    #   - 归一化为均值 1 的噪声权重 `0.5 + importance`，动量平滑；
+    #   - 作用在**表征**通道（而非被 Adam 吸收的梯度缩放），
+    #     且门控到纯标签推断场景。
+    #
+    # 实测（4 个"恢复率压不下去"的场景，100 epoch，本地验证）：
+    #   场景              I_base(Q_p)   I+fidp0.3(Q_p)
+    #   dataset_02_pmc    0.1452        0.9258      <- 6.4 倍
+    #   dataset_02_amc    0.0000        0.0244
+    #   dataset_04_amc    0.0000        0.0000
+    #   dataset_05_pmc    0.4296        0.0000      <- 变差
+    #   合计隐私 2.87 -> 4.75/20（+65%），精度 0.9033 -> 0.9039（几乎不变），
+    #   且**没有场景跌破 0.9*A_clean 约束线**。
+    # 强度 1.0 会把 dataset_02_amc 的精度打到 0.5112（随机水平），因此 **0.3 是最优点**。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    # (1) 抖动只在 VILLAIN 场景生效（来自已得 38.11 分的配置）
+    jitterForAttacks: villain
+
+    # (2) 逐样本范数超额裁剪
+    #     第 48 轮消融确认：在 H 的语境下（有隐私重指派）它是**净正贡献**
+    #     —— 去掉它性能 +0.44，但隐私 -0.59、鲁棒 -0.70，净 -0.85。
+    #     注意这与 G 的实验相反（G 里它使总分从 38.949 降到 38.127）：
+    #     **组件间存在交互，不能孤立判定。**
+    normExcessStrength: 1.0
+    normExcessFactor: 2.5
+
+    # (3) 隐私攻关：梯度重指派只在纯标签推断场景生效
+    gradientShuffleStrength: 1.0
+    gradientShuffleLabelInferenceOnly: true
+    gradientShufflePoisonedOnly: false
+    gradientShuffleBackdoorOnly: false
+
+    # (4) VFL-FIDP 组件：按标签重要性加权的逐维度表征噪声
+    embeddingImportanceNoise: 0.3
+    embeddingImportanceMomentum: 0.9
+    embeddingImportanceLabelInferenceOnly: true
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

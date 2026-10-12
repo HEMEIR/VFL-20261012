@@ -1,0 +1,4 @@
+defense:
+  name: purified_vfl
+  parameters:
+    gradientShuffleStrength: 1.0

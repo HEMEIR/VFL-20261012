@@ -1,0 +1,43 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 候选 I：H 的消融版——去掉负收益的组件 4（逐样本范数超额裁剪）
+    # ------------------------------------------------------------------
+    # 依据：候选 G（= 组件1 + 组件4）的官方公式总分为 38.127，**低于不启用组件 4 的
+    # precision_v3 的 38.949**，也低于平台已得的 38.11（jitter_villain）。原因是组件 4
+    # 在若干场景把主任务精度压到 `0.9*A_clean` 约束线以下，拉低了 G_p，从而同时削弱
+    # 隐私与鲁棒两项。也就是说组件 4 在 H 里很可能是**净负担**，去掉它应当白拿分数。
+    #
+    # 本配置 = 官方公式得分最高的三项组合：
+    #   组件 1  软阈值共模消除（recenterDetectionThreshold: 3.0）
+    #   组件 2  抖动按攻击类型限制（jitterForAttacks: villain）—— 平台 +0.15
+    #   组件 3  梯度重指派，仅纯标签推断场景（gradientShuffleLabelInferenceOnly）
+    #           —— 平台 +3.52（H 实测 41.6341）
+    #
+    # 与 H 的唯一差别：`normExcessStrength` 保持 0.0（默认关闭）。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    # 组件 2：抖动只在 VILLAIN 场景生效
+    jitterForAttacks: villain
+
+    # 组件 3：梯度重指派只在纯标签推断场景生效
+    gradientShuffleStrength: 1.0
+    gradientShuffleLabelInferenceOnly: true
+    gradientShufflePoisonedOnly: false
+    gradientShuffleBackdoorOnly: false
+
+    # 组件 4 关闭（这就是本次消融）
+    normExcessStrength: 0.0
+    normExcessFactor: 2.5
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

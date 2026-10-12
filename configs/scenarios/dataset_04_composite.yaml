@@ -1,0 +1,28 @@
+extends: ../dataset_04.yaml
+
+# dataset_04 正式复合场景：LFBA + AMC（AMC 第 2 轮启用）。
+
+backdoor:
+  name: lfba
+  targetLabel: 1
+  poisonRate: 0.10
+labelInference:
+  name: amc
+  completionBackend: mixmatch
+  auxiliaryLabelsPath: ../auxiliary_labels/dataset_04_pmc.csv
+  completionEpochs: 20
+  completionLearningRate: 0.001
+  lambdaU: 10.0
+  emaDecay: 0.995
+  temperature: 0.8
+  mixupAlpha: 0.75
+  # 第1轮仅供LFBA收集干净cut-layer梯度，第2轮再启用AMC。
+  activeStartEpoch: 2
+  maliciousMomentum: 0.9
+  maliciousDampening: 0.0
+  gradientScaleGamma: 1.0
+  minimumGradientScale: 1.0
+  maximumGradientScale: 10.0
+  gradientScaleEpsilon: 1.0e-7
+output:
+  directory: outputs/scenarios/dataset_04/composite

@@ -1,0 +1,65 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ==================================================================
+    # softcenter = 软标签（soft alias encoding）+ 类中心去除（结构化扰动）
+    # ==================================================================
+    # 本配置组合两类机制：
+    #   ① 软标签伪标签：类 -> 别名块的均匀软分布（labelAliasSoft）
+    #   ② 结构化梯度扰动：减每类平均梯度，改变梯度方向（类中心去除）
+    #
+    # 设计动机（见 docs/操作日志/防御策略-PFNS软编码伪标签.md 与本轮对话）：
+    #   - 零均值高斯噪声被 Adam 逐参数归一化吸收，实测无效（LRA +0.016~+0.054）
+    #   - 软编码（块内均匀）修复了硬编码的精度暴跌，但仍是"集合标签"，
+    #     信息集中度与硬编码无本质差别，PF/PFN/PFNS 实测均未把 LRA 压到随机
+    #   - 类中心去除是"真正改变方向"的扰动：gradientB[i]=softmax_i-onehot(y_i)
+    #     的 argmin 就是标签维度，而类间均值正是携带该信号的分量；减掉它后
+    #     argmin 恢复率降到 0.1185（< 随机 0.125），但保留部分梯度信号
+    #
+    # 玩具实测（scripts/probe_gradient_perturb.py / probe_class_centering.py）：
+    #   扰动            argmin恢复标签   主任务精度   攻击者恢复率
+    #   零均值高斯       0.9995          1.0000       1.0000
+    #   类中心去除       0.1185          0.8090       0.6770
+    #   => 类中心去除是精度-隐私权衡（精度 -0.19，攻击者 -0.32，未到随机 0.5）
+    #   相比重指派（无损置换、到随机）是次优的，但它是"结构化扰动"而非置换。
+
+    # ① 软标签伪标签
+    pseudoLabelStrength: 1.0
+    labelAliasFactor: 2
+    labelAliasSoft: true
+    pseudoLabelSeed: 11
+
+    # ② 结构化梯度扰动（类中心去除）
+    gradientClassCenterStrength: 1.0
+    gradientClassCenterLabelInferenceOnly: true
+
+    # ==================================================================
+    # 候选 O 的已验证机制（重指派 + party dropout + jitter + norm excess）
+    # ==================================================================
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    jitterForAttacks: villain
+
+    normExcessStrength: 1.0
+    normExcessFactor: 2.5
+
+    gradientShuffleStrength: 1.0
+    gradientShuffleLabelInferenceOnly: true
+    gradientShufflePoisoningActiveOnly: true
+    gradientShufflePoisoningBackdoors: ["lfba"]
+    gradientShufflePoisonedOnly: false
+    gradientShuffleBackdoorOnly: false
+
+    partyDropoutRate: 0.2
+    partyDropoutLabelInferenceOnly: true
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

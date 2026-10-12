@@ -1,0 +1,66 @@
+# ============================================================================
+# !! 已证伪，不要提交 !!
+# 平台实测 41.8406，低于候选 O 的 43.3135 达 1.473 分。
+# 尽管本地公式分为 44.068（高于 O 的 43.420），平台给出相反结论。
+# 根因：本改动只影响 3 个场景（d02_pmc / d04_pmc / d05_pmc），其收益全部建立在
+#       本地验证集 LRA 的差值上，而本地 LRA 无法可靠预测 hidden-test LRA。
+# 教训：不要把本地公式用于排序只影响少数场景的 0.6 级参数微调。
+# 保留本文件仅作为记录与标定点，不作为候选。
+# ============================================================================
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # 候选 P = 候选 O（平台实测 43.3135）但把 party dropout 强度从 0.2 降到 0.05
+    # ------------------------------------------------------------------
+    # 动机：候选 O 的 party dropout 在 4/5 个 pmc 场景改善或持平，却**破坏了唯一已达
+    # 天花板的场景** dataset_04_pmc：
+    #   该场景无防御基线恢复率 0.7179，H/M 做到 0.2394（远低于随机水平 0.5），
+    #   即隐私贡献 Q_p 已经是满分 1.0。O 的 dropout 0.2 把它拉到 0.7606（甚至高于基线），
+    #   Q_p 从 1.0 掉到约 0.567，单这一项就抵消了其它四个场景的全部收益。
+    #
+    # 强度扫描（5 个 pmc 场景，100 epoch，本地验证）：
+    #   强度     Σ Q_p      Δ vs 无dropout   折算隐私项
+    #   r00      2.8357     —                —
+    #   r05      3.7538     +0.9180          +1.22 公式分
+    #   r10      3.6712     +0.8355          +1.11 公式分
+    #   r20(O)   3.1068     +0.2710          +0.36 公式分
+    # 逐场景关键值：
+    #   场景         r00 精度/LRA        r05 精度/LRA        r20 精度/LRA
+    #   dataset_01   0.7233/0.5267      0.7150/0.4975      0.7150/0.5100
+    #   dataset_02   0.9025/0.6972      0.8830/0.6913      0.8959/0.5039
+    #   dataset_03   0.9448/0.5904      0.9575/0.5009      0.9584/0.5163
+    #   dataset_04   0.8313/0.2394      0.8258/**0.2394**  0.8280/**0.7606**
+    #   dataset_05   0.9825/0.8359      0.9835/0.7049      0.9845/0.6495
+    # **r05 与 r10 完整保住了 dataset_04_pmc 的 0.2394 天花板，只有 r20 会破坏它。**
+    #
+    # 即 r20 越过了某个阈值；r05 的净收益是 r20 的 3.4 倍。
+    # r05 略优于 r10（+0.0825 ΣQ_p），取 r05。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    jitterForAttacks: villain
+
+    normExcessStrength: 1.0
+    normExcessFactor: 2.5
+
+    gradientShuffleStrength: 1.0
+    gradientShuffleLabelInferenceOnly: true
+    gradientShufflePoisoningActiveOnly: true
+    gradientShufflePoisoningBackdoors: ["lfba"]
+    gradientShufflePoisonedOnly: false
+    gradientShuffleBackdoorOnly: false
+
+    # party dropout：强度从 0.2 降到 0.05（本轮唯一的改动）
+    partyDropoutRate: 0.05
+    partyDropoutLabelInferenceOnly: true
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

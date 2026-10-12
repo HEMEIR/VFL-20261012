@@ -1,0 +1,34 @@
+defense:
+  name: purified_vfl
+  parameters:
+    # ------------------------------------------------------------------
+    # privacy-probe 变体：针对补全攻击的半监督机制加噪
+    # ------------------------------------------------------------------
+    # 依据：把"补全攻击达到的 LRA"与"B 方特征上的全监督线性探针精度"对比后发现，
+    # 攻击在部分数据集上**超过**全监督上界：
+    #   dataset_01  探针 0.5617 / 仅 128 标签 0.4992 / 攻击 LRA 0.6289
+    # 说明 PMC/AMC 靠的不只是"特征线性可分"，而是 MixMatch 式**半监督**利用无标签
+    # 数据的聚类/平滑结构。因此要削弱它，应针对"表征的平滑可聚类性"，而不是"标签
+    # 信息量"——这也解释了为什么此前单纯调低被动方学习率对 LRA 几乎无效。
+    #
+    # 手段：在返还给被动方的 cut 梯度上加按逐样本 RMS 缩放的高斯噪声，使被动方学到的
+    # 表征更粗糙、聚类边界更不可靠，从而削弱伪标签自训练。只在含标签推断攻击的场景
+    # 启用（后门场景下它对隐私无用，只会白付精度）。
+    trainingRecenterStrength: 0.5
+    inferenceRecenterStrength: 1.0
+    referenceMomentum: 0.99
+    recenterMode: soft
+    recenterDetectionThreshold: 3.0
+
+    # 半监督破坏：梯度加噪
+    gradientNoise: 0.3
+    gradientNoiseStartFraction: 0.35
+    gradientNoiseRampFraction: 0.25
+
+    gradientClipQuantile: 0.0
+    gradientClipNorm: 0.0
+    gradientShuffleStrength: 0.0
+
+    trainingJitter: 0.5
+    jitterPoisonedOnly: true
+    jitterWithLabelInference: false

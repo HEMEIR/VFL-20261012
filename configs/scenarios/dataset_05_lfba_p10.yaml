@@ -1,0 +1,15 @@
+extends: ../dataset_05.yaml
+
+training:
+  learningRate: 0.003
+backdoor:
+  name: lfba
+  targetLabel: 5
+  anchorId: TRAIN_000636
+  poisonRate: 0.10
+  switchRate: 0.3
+labelInference:
+  name: none
+  auxiliaryLabelsPath: ../auxiliary_labels/dataset_05_pmc.csv
+output:
+  directory: outputs/scenarios/dataset_05/lfba_p10

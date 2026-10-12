@@ -1,0 +1,21 @@
+extends: ../dataset_03.yaml
+
+backdoor:
+  name: none
+labelInference:
+  name: amc
+  auxiliaryLabelsPath: ../auxiliary_labels/dataset_03_pmc.csv
+  completionLearningRate: 0.0005
+  completionEpochs: 10
+  lambdaU: 50.0
+  emaDecay: 0.999
+  temperature: 0.8
+  mixupAlpha: 0.75
+  maliciousMomentum: 0.9
+  maliciousDampening: 0.0
+  gradientScaleGamma: 1.0
+  minimumGradientScale: 1.0
+  maximumGradientScale: 5.0
+  gradientScaleEpsilon: 1.0e-7
+output:
+  directory: outputs/scenarios/dataset_03/amc

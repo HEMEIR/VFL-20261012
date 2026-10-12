@@ -1,0 +1,71 @@
+dataset:
+  name: dataset_02
+  dataRoot: data/datasets
+  inputFormat: tabular
+  preprocessing: none
+
+model:
+  embeddingDim: 64
+  bottomType: mlp
+  bottomHiddenDims: [256, 128, 64]
+
+training:
+  seed: 100
+  epochs: 100
+  batchSize: 64
+  learningRate: 0.001
+  weightDecay: 0.0
+  earlyStoppingPatience: 20
+  device: auto
+  progressEnabled: true
+  progressMinInterval: 0.5
+
+backdoor:
+  name: none
+  lfbaTriggerType: structuredDimensions
+  targetLabel: 1
+  poisonRate: 0.1
+  switchRate: 0.3
+  # 两种后门统一在 B 方最后三维放置触发器；坐标为 B 方零基局部坐标。
+  triggerDimensions: 3
+  triggerDimensionIndices: [997, 998, 999]
+  triggerFeatureValue: 1.0
+  anchorId: TRAIN_011130
+  knownTargetIds:
+    - TRAIN_041053
+    - TRAIN_007079
+    - TRAIN_001594
+    - TRAIN_017678
+    - TRAIN_015713
+    - TRAIN_014336
+    - TRAIN_008869
+    - TRAIN_006509
+    - TRAIN_043418
+    - TRAIN_034944
+  attackSeed: 100
+
+labelInference:
+  name: none
+  auxiliaryLabelsPath: auxiliary_labels/dataset_02_pmc.csv
+  completionEpochs: 5
+  iterationsPerEpoch: 128
+  completionBatchSize: 16
+  completionLearningRate: 0.002
+  evaluationBatchSize: 512
+  temperature: 0.8
+  mixupAlpha: 0.75
+  lambdaU: 50.0
+  emaDecay: 0.999
+  headLayers: 1
+  activation: relu
+  useBatchNorm: true
+  attackSeed: 100
+  maliciousMomentum: 0.9
+  maliciousDampening: 0.0
+  gradientScaleGamma: 1.0
+  minimumGradientScale: 1.0
+  maximumGradientScale: 5.0
+  gradientScaleEpsilon: 1.0e-7
+
+output:
+  directory: outputs/dataset_02

@@ -1,0 +1,9 @@
+extends: ../dataset_02.yaml
+
+backdoor:
+  name: none
+labelInference:
+  name: pmc
+  auxiliaryLabelsPath: ../auxiliary_labels/dataset_02_pmc.csv
+output:
+  directory: outputs/scenarios/dataset_02/pmc
