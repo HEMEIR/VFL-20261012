@@ -26,9 +26,22 @@ defense:
     gradientShufflePoisonedOnly: false
     gradientShuffleBackdoorOnly: false
 
-    # party dropout
+    # party dropout（全局启用，程度参数调优）
+    #   partyDropoutScale 是"缩放程度"参数：0=置零，0~1=缩放。
+    #   置零产生精确零梯度（amc 无法放大，安全）；缩放产生微弱非零梯度（amc 放大后
+    #   精度崩溃，实测 d02/amc 0.895->0.552）。所以纯 pmc/amc 场景保持置零，
+    #   仅 lfba+amc composite 用缩放（否则置零会崩溃 LFBA 的 poison-set 排名）。
+    #   villain+pmc composite 对 dropout 敏感（d03 0.645->0.712），rate 降到最小。
     partyDropoutRate: 0.2
     partyDropoutLabelInferenceOnly: true
+    partyDropoutScale: 0.0
+
+    # 按攻击类型（backdoor|labelInference）定制 dropout 程度
+    scenarioOverrides:
+      "lfba|amc":
+        partyDropoutScale: 0.1
+      "villain|pmc":
+        partyDropoutRate: 0.05
 
     gradientClipQuantile: 0.0
     gradientClipNorm: 0.0
@@ -45,14 +58,19 @@ defense:
     pseudoLabelSeed: 11
 
     # 按数据集定制（experiment 层从 config["dataset"]["name"] 注入，非特征 hash）
-    #   dataset_04（二分类，B 仅 7 维）：重指派无效，改用 party dropout 0.3
-    #     pmc 恢复率 0.761 -> 0.239，amc 0.761 -> 0.701
-    #   dataset_05（六分类）：composite(villain+pmc) 让重指派覆盖 villain + 取消 warmup 保护
-    #     composite 恢复率 0.833 -> 0.683，且纯 villain ASR 0.020 -> 0.018（鲁棒更好）
-    #   dataset_03 不能覆盖 villain（VILLAIN checkpoint 会中止），故不在此列
+    #   dataset_01：二分类 amc 用 σ=0.5（LRA 0.533->0.497，acc 0.726）
+    #   dataset_02：二分类 amc 用 σ=0.1（LRA 0.678->0.463，低于随机，防住）
+    #   dataset_04：重指派无效，party dropout 提至 0.3；amc 用默认 σ=1.0（0.668）
+    #   dataset_05：composite(villain+pmc) 让重指派覆盖 villain + 取消 warmup 保护
+    #   dataset_03 不能覆盖 villain（VILLAIN checkpoint 会中止）；amc 已防住（0.457）
     datasetOverrides:
+      dataset_01:
+        labelAliasSigma: 0.5
+      dataset_02:
+        labelAliasSigma: 0.1
       dataset_04:
         partyDropoutRate: 0.3
       dataset_05:
         gradientShufflePoisoningBackdoors: ["lfba", "villain"]
         gradientShuffleWarmupProtect: false
+

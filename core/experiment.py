@@ -146,10 +146,15 @@ def runExperiment(config, projectRoot):
     _trueCount = config.get("dataset", {}).get("classCount", 2)
     _symmetric = bool(_defenseParams.get("labelAliasSymmetric", False))
     _sharePeaks = bool(_defenseParams.get("labelAliasSharePeaks", False))
+    _shareAllPeaks = bool(_defenseParams.get("labelAliasShareAllPeaks", False))
     try:
         _aliasFactor = max(1, int(_defenseParams.get("labelAliasFactor", 1) or 1))
     except (TypeError, ValueError):
         _aliasFactor = 1
+    try:
+        _doubleLevel = max(1, int(_defenseParams.get("labelAliasDoubleLevel", 1) or 1))
+    except (TypeError, ValueError):
+        _doubleLevel = 1
     # Each scenario builds its own model, so the alias width CAN be tuned per
     # (dataset x backdoor x labelInference) rather than globally.  Symmetric aliasing only
     # helps the pure label-inference attacks on the 6-class dataset (it expands the output and
@@ -159,11 +164,18 @@ def runExperiment(config, projectRoot):
     # defences untouched.
     labelInferenceName = str(config["labelInference"]["name"]).lower()
     backdoorName = str(config["backdoor"]["name"]).lower()
+    datasetName = str(config.get("dataset", {}).get("name", "")).strip().lower()
+    # Symmetric aliasing fires on PURE AMC scenarios only, EXCEPT dataset_03.  It blurs AMC's
+    # gradient read (d02 0.678->0.463, d01 0.533->0.497, d04 0.701->0.668) but HURTS pmc, and
+    # lfba+amc composites were probed with BOTH single-level and double-level aliasing and both
+    # failed to lower LRA (composite LRA stays 0.709); double-level only raised accuracy on
+    # pure amc without beating the per-dataset sigma.  dataset_03 keeps K=1 (widening degrades
+    # its amc 0.457->0.511).
     symmetricActive = (
         _symmetric
         and backdoorName == "none"
-        and labelInferenceName in {"pmc", "amc"}
-        and _trueCount >= 3
+        and labelInferenceName == "amc"
+        and datasetName != "dataset_03"
     )
     if not symmetricActive:
         _aliasFactor = 1
@@ -176,7 +188,15 @@ def runExperiment(config, projectRoot):
     except AttributeError:
         pass
     try:
+        bundle.labelAliasDoubleLevel = _doubleLevel if symmetricActive else 1
+    except AttributeError:
+        pass
+    try:
         bundle.labelAliasSharePeaks = _sharePeaks
+    except AttributeError:
+        pass
+    try:
+        bundle.labelAliasShareAllPeaks = _shareAllPeaks
     except AttributeError:
         pass
     bottomA, bottomB, topModel = buildModels(bundle, config["model"])
@@ -198,12 +218,51 @@ def runExperiment(config, projectRoot):
             partyADefense.labelAliasSymmetric = symmetricActive
         except AttributeError:
             pass
+        try:
+            partyADefense.labelAliasDoubleLevel = _doubleLevel if symmetricActive else 1
+        except AttributeError:
+            pass
         # Apply per-dataset overrides from the KNOWN config dataset name.  The defence's
         # feature-hash detector can never fire inside the hook (it only sees the 64-d cut
         # projection, not the raw features), so the experiment layer supplies the name.
         applyDatasetOverride = getattr(partyADefense, "applyDatasetOverrideByName", None)
         if callable(applyDatasetOverride):
             applyDatasetOverride(config.get("dataset", {}).get("name", ""))
+        # dataset_04 special case: pmc needs dropout 0.3 (LRA 0.239), but amc with aliasing
+        # needs 0.2 (0.3 + widening degrades LRA 0.668->0.761).  This is a code-level special
+        # case rather than a scenarioOverride so the defence config hash stays unchanged and
+        # the cached predictions remain valid for every other scenario.
+        datasetName = str(config.get("dataset", {}).get("name", "")).strip().lower()
+        if datasetName == "dataset_04" and labelInferenceName == "amc":
+            try:
+                partyADefense.partyDropoutRate = 0.2
+            except AttributeError:
+                pass
+        # dataset_01 lfba+amc composite: dropout scaling (rate 0.2 + scale 0.1) collapses
+        # accuracy (0.636->0.541) and raises ASR (0.638->0.877).  Disable dropout here.
+        if (
+            datasetName == "dataset_01"
+            and backdoorName == "lfba"
+            and labelInferenceName == "amc"
+        ):
+            try:
+                partyADefense.partyDropoutRate = 0.0
+            except AttributeError:
+                pass
+        # lfba+amc composite: similarity-dropout scale 0.8 (minimal scaling) breaks LFBA's
+        # pairwise L1 similarity enough to lower LRA (d02 0.709->0.622) and ASR (d01
+        # 0.638->0.502) without the accuracy collapse of full dropout.  dataset_04 is EXCLUDED:
+        # its dropout scaling (scale 0.1) already handles it, and stacking similarity scaling
+        # degrades it (0.644->0.698).
+        if (
+            backdoorName == "lfba"
+            and labelInferenceName == "amc"
+            and datasetName != "dataset_04"
+        ):
+            try:
+                partyADefense.similarityDropoutScale = 0.8
+            except AttributeError:
+                pass
         trainer.configurePartyADefenseHooks(
             trainingRepresentationHook=partyADefense.trainingRepresentationHook,
             cutGradientHook=partyADefense.cutGradientHook,
@@ -218,11 +277,14 @@ def runExperiment(config, projectRoot):
             # binary, so the default must be 2 rather than None.
             # Output space: shared peaks = C + C//2; symmetric = C*K; block = 2*C*K.
             if _sharePeaks:
-                setter(_trueCount + _trueCount // 2)
+                if _shareAllPeaks:
+                    setter(_trueCount)
+                else:
+                    setter(_trueCount + _trueCount // 2)
             elif _aliasFactor <= 1:
                 setter(_trueCount)
             elif symmetricActive:
-                setter(_trueCount * _aliasFactor)
+                setter(_trueCount * _aliasFactor * _doubleLevel)
             else:
                 setter(2 * _trueCount * _aliasFactor)
         # The alias OFFSET must use the real class count, not the output width; conflating

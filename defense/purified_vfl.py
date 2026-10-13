@@ -157,6 +157,11 @@ SUPPORTED_PARAMETERS = {
     "partyDropoutRate",
     "partyDropoutLabelInferenceOnly",
     "partyDropoutScale",
+    # Label-orthogonal projection: remove each sample's component along the between-class
+    # directions of B's embedding, so PMC (which reads the embedding) cannot recover the label.
+    "embeddingOrthogonalProjection",
+    "embeddingOrthogonalProjectionLabelInferenceOnly",
+    "embeddingAdversarialRemoval",
     # M3 - per-sample gradient reassignment
     "gradientShuffleStrength",
     "gradientShufflePoisonedOnly",
@@ -171,6 +176,8 @@ SUPPORTED_PARAMETERS = {
     "gradientShuffleAdaptiveFloor",
     "gradientShuffleAdaptiveEma",
     "gradientShuffleWarmupProtect",
+    "gradientShuffleClassDisperse",
+    "similarityDropoutScale",
     "gradientSparsifyRate",
     "gradientSparsifyAdaptive",
     "gradientClipAdaptiveStrength",
@@ -211,7 +218,9 @@ SUPPORTED_PARAMETERS = {
     "labelAliasSmoothing",
     "labelAliasSymmetric",
     "labelAliasSharePeaks",
+    "labelAliasShareAllPeaks",
     "labelAliasSigma",
+    "labelAliasDoubleLevel",
     "pseudoTrueClassCount",
     "pseudoLabelSeed",
     "scenarioOverrides",
@@ -512,6 +521,19 @@ class PurifiedVflDefense:
         # scenario where nothing is currently re-assigned.
         self.gradientShuffleWarmupProtect = bool(
             parameters.get("gradientShuffleWarmupProtect", True))
+        # Class-disperse reassignment: instead of a uniform random permutation, prefer a
+        # permutation that sends each sample's gradient to a DIFFERENT class (read from the
+        # hook's labels), so same-class gradients no longer accumulate and the label's
+        # per-sample attribution is broken more thoroughly.
+        self.gradientShuffleClassDisperse = bool(
+            parameters.get("gradientShuffleClassDisperse", False))
+        # Similarity-dropout: scale samples whose gradient is near-identical to another
+        # sample, breaking LFBA's pairwise L1 similarity with MINIMAL scaling (scale close
+        # to 1).  0 disables it.  Intended for lfba+amc composites where full dropout is
+        # harmful.
+        self.similarityDropoutScale = _finiteFloat(
+            parameters.get("similarityDropoutScale"), 0.0, 0.0, 1.0, "similarityDropoutScale"
+        )
         self.gradientShuffleAdaptiveStrength = _finiteFloat(
             parameters.get("gradientShuffleAdaptiveStrength"), 0.0, 0.0, 1.0,
             "gradientShuffleAdaptiveStrength",
@@ -714,6 +736,16 @@ class PurifiedVflDefense:
         # (toy) to give a positive net trade-off: PMC falls 0.646->0.435 while A's inverse only
         # falls 0.742->0.6675.
         self.labelAliasSharePeaks = bool(parameters.get("labelAliasSharePeaks", False))
+        # Full overlap: each class shares ALL its peaks with exactly one partner class (no
+        # private peak), so a class pair is indistinguishable -> the attacker's per-class
+        # recovery on the pair drops to ~50%.  A's inverse also becomes 50% on the pair.
+        self.labelAliasShareAllPeaks = bool(parameters.get("labelAliasShareAllPeaks", False))
+        # Double-level soft label: each of the K first-level peaks of a class is itself mapped
+        # to L second-level peaks.  Output width becomes C*K*L.  L==1 keeps the single-level
+        # symmetric scheme unchanged.  The two-layer mapping is meant to spread the label over a
+        # wider alias space with a SMALLER per-level widening, reducing the accuracy collapse a
+        # single large widening causes (measured on composite: K=4 collapses accuracy).
+        self.labelAliasDoubleLevel = max(1, int(parameters.get("labelAliasDoubleLevel", 1) or 1))
         self.pseudoLabelSeed = int(parameters.get("pseudoLabelSeed", 0) or 0)
         # Created AFTER the seed is known; creating it earlier raised AttributeError because
         # the seed attribute did not exist yet.
@@ -1105,6 +1137,24 @@ class PurifiedVflDefense:
             parameters.get("partyDropoutScale"), 0.0, 0.0, 1.0, "partyDropoutScale"
         )
         self.lastPartyDropoutFraction = 0.0
+        # Label-orthogonal projection: blend strength in [0,1] that removes each sample's
+        # component along the between-class directions of B's embedding.  1.0 fully removes
+        # the label's between-class signal from the embedding the top model sees (and from
+        # the gradient it returns to B), pushing the top model to classify from A alone.
+        self.embeddingOrthogonalProjection = _finiteFloat(
+            parameters.get("embeddingOrthogonalProjection"),
+            0.0, 0.0, 1.0, "embeddingOrthogonalProjection",
+        )
+        self.embeddingOrthogonalProjectionLabelInferenceOnly = bool(
+            parameters.get("embeddingOrthogonalProjectionLabelInferenceOnly", True)
+        )
+        # Adversarial class-identity removal: fit a linear discriminator and project off its
+        # weight directions (Elazar & Goldberg / GRL style), better than per-class means for
+        # non-linearly-arranged classes (6-class pmc).
+        self.embeddingAdversarialRemoval = _finiteFloat(
+            parameters.get("embeddingAdversarialRemoval"),
+            0.0, 0.0, 1.0, "embeddingAdversarialRemoval",
+        )
         self.lastImportanceWeight = None
         self.lastImportanceNoiseFraction = 0.0
         # SecureSplit adaptive majority filtering (see _secureSplitFilter).
@@ -1388,6 +1438,62 @@ class PurifiedVflDefense:
         )
         return self._applyDonorMask(gradient, index, count, generator)
 
+    def _classDispersedShuffle(self, gradient, labels, generator):
+        """Class-uniform reassignment: each sample receives the gradient of the NEXT class
+        (cyclic shift), so every label's gradient lands on a DIFFERENT class and the classes
+        are spread uniformly across the batch instead of any one class clustering.
+
+        For C classes, class c's samples take their gradients from class (c+1)%C's samples
+        (cycling positions when sizes differ).  This guarantees zero same-class attribution
+        and an even interleaving, unlike a random permutation which can leave one class bunched.
+        """
+        if labels is None or gradient.shape[0] < 2 or generator is None:
+            return gradient
+        target = labels.detach()
+        if target.dim() > 1:
+            target = target.argmax(dim=1)
+        target = target.reshape(-1).to(torch.long)
+        count = gradient.shape[0]
+        classIndices = {}
+        for i in range(count):
+            c = int(target[i].item())
+            classIndices.setdefault(c, []).append(i)
+        classes = sorted(classIndices.keys())
+        if len(classes) < 2:
+            return gradient
+        permutation = torch.zeros(count, dtype=torch.long, device=gradient.device)
+        for ci, c in enumerate(classes):
+            cNext = classes[(ci + 1) % len(classes)]
+            src = classIndices[c]
+            dst = classIndices[cNext]
+            for k, i in enumerate(src):
+                permutation[i] = dst[k % len(dst)]
+        return self._applyDonorMask(gradient, permutation, count, generator)
+
+    def _similarityScaledDropout(self, gradient, scale, generator):
+        """Scale samples whose gradient is near-identical to another sample.
+
+        LFBA ranks its poison set by per-sample L1 similarity, so a pair of near-identical
+        gradients is what lets a poisoned batch cluster together.  This scales (NOT zeroes)
+        any sample that has a near-duplicate neighbour, breaking the pairwise similarity
+        with the SMALLEST possible perturbation (``scale`` close to 1).  Keeps the gradient
+        non-zero, so LFBA's L1-similarity step still has data to rank on.
+        """
+        if scale <= 0.0 or scale >= 1.0 or gradient.shape[0] < 2:
+            return gradient
+        normalized = gradient / (
+            gradient.norm(dim=1, keepdim=True).clamp_min(1e-8)
+        )
+        similarity = normalized @ normalized.T
+        similarity = similarity.fill_diagonal_(0.0)
+        maxSimilarity = similarity.max(dim=1).values
+        mask = (maxSimilarity > 0.95).reshape(-1, *([1] * (gradient.dim() - 1)))
+        if not bool(mask.any().item()):
+            return gradient
+        result = torch.where(mask, gradient * scale, gradient)
+        self.lastSimilarityDropoutFraction = float(mask.float().mean().item())
+        return result
+
     def _noiseScale(self, epoch, batchIndex, context):
         """Annealed noise magnitude, as a fraction of progress through training.
 
@@ -1465,6 +1571,94 @@ class PurifiedVflDefense:
             centered[mask] = gradient[mask] - gradient[mask].mean(
                 dim=0, keepdim=True)
         return gradient + strength * (centered - gradient).to(dtype=gradient.dtype)
+
+    def _labelOrthogonalProjection(self, embedding, labels, strength):
+        """Project each sample off the between-class subspace of B's embedding.
+
+        The label leaks to PMC through the BETWEEN-CLASS component of B's embedding (the
+        per-class means).  This computes an orthonormal basis Q of the between-class span
+        (from the per-class means within the batch) and subtracts each sample's projection
+        onto that span, leaving only the within-class and residual components.  The top model
+        therefore sees (and returns to B) an embedding with the label's between-class signal
+        removed, so it must classify from A's own embedding - while PMC, which reads B's
+        embedding, finds no class direction to complete.
+
+        ``strength`` in [0, 1] blends toward the fully-projected embedding (0 = identity).
+        """
+        if strength <= 0.0 or labels is None or embedding.shape[0] < 2:
+            return embedding
+        target = labels.detach()
+        if target.dim() > 1:
+            target = target.argmax(dim=1)
+        target = target.reshape(-1).to(torch.long)
+        classCount = int(target.max().item()) + 1
+        means = []
+        for c in range(classCount):
+            mask = target == c
+            if int(mask.sum().item()) < 2:
+                continue
+            means.append(embedding[mask].mean(dim=0, keepdim=True))
+        if len(means) < 2:
+            return embedding
+        meanStack = torch.cat(means, dim=0)  # [k, d]
+        centeredMeans = meanStack - meanStack.mean(dim=0, keepdim=True)
+        # Orthonormal basis of the between-class span (columns of Q, [d, rank]).
+        try:
+            q, r = torch.linalg.qr(centeredMeans.T)
+        except RuntimeError:
+            return embedding
+        rank = int(torch.linalg.matrix_rank(centeredMeans.T).item())
+        if rank < 1:
+            return embedding
+        q = q[:, :rank]
+        projection = embedding @ q @ q.T  # [n, d]
+        projected = embedding - projection
+        return embedding + strength * (projected - embedding).to(dtype=embedding.dtype)
+
+    def _adversarialClassRemoval(self, embedding, labels, strength):
+        """Adversarial class-identity removal (Elazar & Goldberg / GRL style).
+
+        Fits a LINEAR discriminator from the embedding to the labels (least squares), then
+        projects the embedding off the discriminator's weight directions.  A linear
+        discriminator captures the class-identity subspace better than per-class means (the
+        previous projection) because it can separate non-linearly-arranged classes - which is
+        exactly the 6-class pmc case.  ``strength`` blends toward the fully-removed embedding.
+        """
+        if strength <= 0.0 or labels is None or embedding.shape[0] < 8:
+            return embedding
+        target = labels.detach()
+        if target.dim() > 1:
+            target = target.argmax(dim=1)
+        target = target.reshape(-1).to(torch.long)
+        classCount = int(target.max().item()) + 1
+        if classCount < 2:
+            return embedding
+        flat = embedding.detach().float()
+        if flat.dim() > 2:
+            flat = flat.reshape(flat.shape[0], -1)
+        oneHot = torch.nn.functional.one_hot(target, num_classes=classCount).float()
+        centered = flat - flat.mean(dim=0, keepdim=True)
+        centeredY = oneHot - oneHot.mean(dim=0, keepdim=True)
+        try:
+            weights = torch.linalg.lstsq(centered, centeredY).solution  # [d, C]
+        except RuntimeError:
+            return embedding
+        if not bool(torch.isfinite(weights).all().item()):
+            return embedding
+        weights = weights - weights.mean(dim=0, keepdim=True)
+        q, _ = torch.linalg.qr(weights)
+        if not bool(torch.isfinite(q).all().item()):
+            return embedding
+        rank = int(torch.linalg.matrix_rank(weights).item())
+        if rank < 1:
+            return embedding
+        q = q[:, :rank]
+        projection = flat @ q @ q.T
+        projected = flat - projection
+        result = embedding + strength * (projected.to(dtype=embedding.dtype) - embedding)
+        if not bool(torch.isfinite(result).all().item()):
+            return embedding
+        return result
 
     # Strength parameters that MUST stay enabled: overriding them to 0 would switch a defence
     # mechanism OFF, which is forbidden - the defence may only TUNE parameters per scenario,
@@ -2954,18 +3148,23 @@ class PurifiedVflDefense:
                 # the trainer uses plain CrossEntropyLoss (exactly one-hot, [1,0]/[0,1]) - the
                 # soft label is then literally "no soft label", leaving reassignment untouched.
                 return labels
+            if self.labelAliasDoubleLevel > 1:
+                return self._doubleSoftLabel(labels)
             return self._symmetricSoftLabel(labels)
         if self.labelAliasSoft:
             return self._softLabel(labels)
         return self._pseudoLabel(labels)
 
     def _sharedSoftLabel(self, labels):
-        """Shared-peak soft labels: each class has a PRIVATE peak (position c) and a SHARED
-        peak (position C + c//2, shared with exactly one partner class c^1).
+        """Shared-peak soft labels.
 
-        A sample draws one of its two peaks at random; the soft target is a normal peak at
-        that position.  The shared peak blurs the class identity in the embedding (which is
-        what PMC reads) while the private peak keeps the mapping largely invertible.
+        Default: each class has a PRIVATE peak (position c) and a SHARED peak (position
+        C + c//2, shared with partner class c^1).
+
+        Full overlap (labelAliasShareAllPeaks): a class has TWO peaks, BOTH shared with its
+        partner class c^1 (positions {c, c^1} when c is even, i.e. the pair's own two
+        positions).  The pair is then fully indistinguishable, dropping the attacker's
+        per-class recovery on the pair toward 50%.
         """
         if labels is None:
             return labels
@@ -2973,7 +3172,6 @@ class PurifiedVflDefense:
             int(self.pseudoLabelClasses or 0) // 2)
         if C < 2:
             return labels
-        M = C + C // 2
         target = labels.detach()
         if target.dim() > 1:
             target = target.argmax(dim=1)
@@ -2984,7 +3182,14 @@ class PurifiedVflDefense:
             self.pseudoLabelGenerator.manual_seed(self.pseudoLabelSeed)
         pick = torch.randint(0, 2, (rows,), generator=self.pseudoLabelGenerator,
                              device=target.device)
-        peaks = torch.where(pick == 0, target, C + target // 2).float()
+        if self.labelAliasShareAllPeaks:
+            # Full overlap: pair of (c//2) owns positions {2*(c//2), 2*(c//2)+1}.
+            pair = target // 2
+            peaks = (pair * 2 + pick).float()
+            M = C
+        else:
+            peaks = torch.where(pick == 0, target, C + target // 2).float()
+            M = C + C // 2
         sigma = float(self.labelAliasSigma)
         positions = torch.arange(M, dtype=torch.float32, device=target.device)
         soft = torch.exp(-((positions[None, :] - peaks[:, None]) ** 2) / (2.0 * sigma * sigma))
@@ -3030,6 +3235,53 @@ class PurifiedVflDefense:
             # soft label must then be SHARP (nearly one-hot) so it is "as if no soft label",
             # otherwise sigma=1 leaves a [0.62, 0.38] target that collapsed accuracy to 0.49.
             sigma = 0.3
+        positions = torch.arange(M, dtype=torch.float32, device=target.device)
+        soft = torch.exp(-((positions[None, :] - peaks[:, None]) ** 2) / (2.0 * sigma * sigma))
+        soft = soft / soft.sum(dim=1, keepdim=True).clamp_min(1e-12)
+        return soft
+
+    def _doubleSoftLabel(self, labels):
+        """Two-level soft label: class c -> K first-level peaks -> each -> L second-level peaks.
+
+        First level (same as symmetric): class c owns K peaks
+            left  = c + (j1 // 2) * C,   right = M1 - 1 - (j1 // 2) * C - c,  M1 = C * K.
+        Second level: a first-level peak p is itself expanded into L positions
+            p + j2 * M1,  j2 in [0, L).
+        Output width M = C * K * L.  The inverse is simply p2 % C (all levels are integer
+        multiples of C).  This spreads the label across TWO layers so a small per-layer
+        widening (e.g. K=2, L=2) can reach the same total width (4) as a single K=4 widening
+        with less accuracy collapse.
+        """
+        if labels is None:
+            return labels
+        K = max(1, int(self.labelAliasFactor))
+        L = max(1, int(self.labelAliasDoubleLevel))
+        if L <= 1:
+            return self._symmetricSoftLabel(labels)
+        C = int(self.pseudoTrueClassCount or 0) or (
+            int(self.pseudoLabelClasses or 0) // (K * L))
+        if C < 2:
+            return labels
+        M1 = C * K
+        M = M1 * L
+        target = labels.detach()
+        if target.dim() > 1:
+            target = target.argmax(dim=1)
+        target = target.reshape(-1).to(torch.long)
+        rows = int(target.shape[0])
+        if self.pseudoLabelGenerator is None or self.pseudoLabelGenerator.device != target.device:
+            self.pseudoLabelGenerator = torch.Generator(device=target.device)
+            self.pseudoLabelGenerator.manual_seed(self.pseudoLabelSeed)
+        j1 = torch.randint(0, K, (rows,), generator=self.pseudoLabelGenerator,
+                           device=target.device)
+        j2 = torch.randint(0, L, (rows,), generator=self.pseudoLabelGenerator,
+                           device=target.device)
+        half = j1 // 2
+        left = target + half * C
+        right = M1 - 1 - half * C - target
+        firstPeak = torch.where((j1 % 2) == 0, left, right)
+        peaks = firstPeak + j2 * M1
+        sigma = float(self.labelAliasSigma)
         positions = torch.arange(M, dtype=torch.float32, device=target.device)
         soft = torch.exp(-((positions[None, :] - peaks[:, None]) ** 2) / (2.0 * sigma * sigma))
         soft = soft / soft.sum(dim=1, keepdim=True).clamp_min(1e-12)
@@ -3174,15 +3426,28 @@ class PurifiedVflDefense:
         classes = int(self.pseudoTrueClassCount or 0) or (
             int(self.pseudoLabelClasses or 0) // K)
         if self.labelAliasSharePeaks:
-            # Shared-peak inverse: private peak (p < C) maps to class p exactly; a shared
-            # peak (p >= C) maps to the smaller of the two sharing classes 2*(p-C).  The
-            # larger partner class therefore loses its shared-peak samples, which is the
-            # measured trade-off (A inverse falls a little, PMC falls more).
-            restored = [int(v) if int(v) < classes else 2 * (int(v) - classes)
-                        for v in predictions]
+            if self.labelAliasShareAllPeaks:
+                # Full overlap: the pair (c//2) owns positions {2*(c//2), 2*(c//2)+1}; the
+                # inverse is the position itself, which lands on the partner class half the
+                # time (the measured accuracy cost of full indistinguishability).
+                restored = [int(v) for v in predictions]
+            else:
+                # Shared-peak inverse: private peak (p < C) maps to class p exactly; a shared
+                # peak (p >= C) maps to the smaller of the two sharing classes 2*(p-C).
+                restored = [int(v) if int(v) < classes else 2 * (int(v) - classes)
+                            for v in predictions]
         elif self.labelAliasSymmetric:
             M = int(self.pseudoLabelClasses or 0) or (classes * K)
-            if K == 1:
+            if self.labelAliasDoubleLevel > 1:
+                # Two-level inverse: collapse the second level (block of size M1 = C*K), then
+                # apply the symmetric inverse within the first level.
+                M1 = classes * K
+                restored = [
+                    (int(v) % M1 % classes) if (int(v) % M1) < M1 / 2.0
+                    else ((M1 - 1 - int(v) % M1) % classes)
+                    for v in predictions
+                ]
+            elif K == 1:
                 # K=1 is the IDENTITY mapping (class c -> position c): the inverse is just
                 # p % C.  The symmetric-pair formula is WRONG here because there is no pair
                 # {c, M-1-c} - with M=2 it mapped position 1 back to class 0 and collapsed
@@ -3475,6 +3740,20 @@ class PurifiedVflDefense:
                 stabilized = self._partyDropout(
                     stabilized, self.partyDropoutRate, generator, effectiveScale
                 )
+        if self.embeddingOrthogonalProjection > 0.0:
+            projFire = True
+            if self.embeddingOrthogonalProjectionLabelInferenceOnly:
+                projFire = str(
+                    (context or {}).get("labelInference", "none")
+                ).strip().lower() not in {"", "none"}
+            if projFire and labels is not None:
+                stabilized = self._labelOrthogonalProjection(
+                    stabilized, labels, self.embeddingOrthogonalProjection
+                )
+        if self.embeddingAdversarialRemoval > 0.0 and labels is not None:
+            stabilized = self._adversarialClassRemoval(
+                stabilized, labels, self.embeddingAdversarialRemoval
+            )
         if (self.auxiliaryExclude and self.auxiliarySampleIds is not None
                 and self.auxiliaryExcludeSide in {"a", "ab"}):
             # Drop the auxiliary samples from A's OWN training objective: the faithful
@@ -3616,9 +3895,14 @@ class PurifiedVflDefense:
                 and attack not in self.gradientShuffleAllowlist
             ):
                 shuffleStrength = 0.0
-        transformed = self._shuffleGradientAssignments(
-            gradientB, shuffleStrength, generator
-        )
+        if self.gradientShuffleClassDisperse and shuffleStrength > 0.0 and labels is not None:
+            transformed = self._classDispersedShuffle(
+                gradientB, labels, generator
+            )
+        else:
+            transformed = self._shuffleGradientAssignments(
+                gradientB, shuffleStrength, generator
+            )
         if self.scenarioOverrides:
             self._applyScenarioOverrides(
                 (context or {}).get("backdoor"),
@@ -3638,6 +3922,10 @@ class PurifiedVflDefense:
                 self.gradientShuffleAdaptiveGain,
                 self.gradientShuffleAdaptiveFloor,
                 self.gradientShuffleAdaptiveEma,
+            )
+        if self.similarityDropoutScale > 0.0:
+            transformed = self._similarityScaledDropout(
+                transformed, self.similarityDropoutScale, generator
             )
         noiseScale = self._noiseScale(epoch, batchIndex, context)
         if noiseScale > 0.0:

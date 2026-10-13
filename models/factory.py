@@ -32,15 +32,18 @@ def buildModels(bundle, modelConfig):
     # configuration including the baseline, which silently invalidated a whole pilot - the
     # baseline no longer reproduced its own earlier numbers.
     if bool(getattr(bundle, "labelAliasSharePeaks", False)):
-        # Shared peaks: C private positions + C//2 shared positions.  Must be checked BEFORE
-        # aliasFactor<=1 (which defaults to classCount) or the width stays C and the soft
-        # target (C + C//2 wide) mismatches the logits.
-        width = classCount + classCount // 2
+        # Shared peaks: C private positions + C//2 shared positions (partial), or just C
+        # positions when full overlap (labelAliasShareAllPeaks).
+        if bool(getattr(bundle, "labelAliasShareAllPeaks", False)):
+            width = classCount
+        else:
+            width = classCount + classCount // 2
     elif aliasFactor <= 1:
         width = classCount
     elif bool(getattr(bundle, "labelAliasSymmetric", False)):
         # Symmetric (edge-to-centre) aliases use NO offset: the peaks span [0, C*K).
-        width = classCount * aliasFactor
+        doubleLevel = max(1, int(getattr(bundle, "labelAliasDoubleLevel", 1) or 1))
+        width = classCount * aliasFactor * doubleLevel
     else:
         width = classCount * aliasFactor * 2
     return bottomA, bottomB, TopModel(
